@@ -1,0 +1,2 @@
+{"timestamp":"2025-12-24T06:38:53.494Z","event":"Design Created: trim go-fetch","file":"docs/specs/2025-12-24-simplify-features/design.md","notes":"Remove cert_watcher, circuit_breaker, load_balancer, sse modules"}
+{"timestamp":"2025-12-24T06:46:08.489Z","event":"Plan Created: simplify-features","file":"docs/specs/2025-12-24-simplify-features/plan.md","notes":"Remove cert_watcher, circuit_breaker, load_balancer, sse modules - 14 tasks"}
