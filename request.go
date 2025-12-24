@@ -810,17 +810,7 @@ func (r *Request) SetLogger(l Logger) *Request {
 	return r
 }
 
-// EnableDebug method is a helper method for [Request.SetDebug]
-func (r *Request) EnableDebug() *Request {
-	r.SetDebug(true)
-	return r
-}
-
-// DisableDebug method is a helper method for [Request.SetDebug]
-func (r *Request) DisableDebug() *Request {
-	r.SetDebug(false)
-	return r
-}
+//
 
 // SetDebug method enables the debug mode on the current request. It logs
 // the details current request and response.
@@ -841,26 +831,7 @@ func (r *Request) SetDebug(d bool) *Request {
 // HTTP request tracing
 //_______________________________________________________________________
 
-// SetTrace method enables trace for the current request
-// using [httptrace.ClientTrace] and provides insights.
 //
-//	client := resty.New()
-//
-//	resp, err := client.R().SetTrace(true).Get("https://httpbin.org/get")
-//	fmt.Println("Error:", err)
-//	fmt.Println("Trace Info:", resp.Request.TraceInfo())
-//
-// See [Client.SetTrace] are also available to get trace info for all requests.
-func (r *Request) EnableTrace() *Request {
-	r.SetTrace(true)
-	return r
-}
-
-// DisableTrace method disables the request trace for the current request
-func (r *Request) DisableTrace() *Request {
-	r.SetTrace(false)
-	return r
-}
 
 // SetTrace method is used to turn on/off the trace capability at the request level
 //

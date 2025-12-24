@@ -8,7 +8,6 @@ package fetch
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"errors"
 	"io"
 	"maps"
@@ -90,13 +89,6 @@ type (
 
 	// RequestFunc type is for extended manipulation of the Request instance
 	RequestFunc func(*Request) *Request
-
-	// TLSClientConfiger interface is to configure TLS Client configuration on custom transport
-	// implemented using [http.RoundTripper]
-	TLSClientConfiger interface {
-		TLSClientConfig() *tls.Config
-		SetTLSClientConfig(*tls.Config) error
-	}
 )
 
 // TransportSettings struct is used to define custom dialer and transport
@@ -1029,49 +1021,6 @@ func (c *Client) SetRedirectPolicy(policies ...RedirectPolicy) *Client {
 	return c
 }
 
-// TLSClientConfig method returns the [tls.Config] from underlying client transport
-// otherwise returns nil
-func (c *Client) TLSClientConfig() *tls.Config {
-	cfg, err := c.tlsConfig()
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-	}
-	return cfg
-}
-
-// SetTLSClientConfig method sets TLSClientConfig for underlying client Transport.
-//
-// Values supported by https://pkg.go.dev/crypto/tls#Config can be configured.
-//
-//	// Disable SSL cert verification for local development
-//	client.SetTLSClientConfig(&tls.Config{
-//		InsecureSkipVerify: true
-//	})
-//
-// NOTE: This method overwrites existing [http.Transport.TLSClientConfig]
-func (c *Client) SetTLSClientConfig(tlsConfig *tls.Config) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	// TLSClientConfiger interface handling
-	if tc, ok := c.httpClient.Transport.(TLSClientConfiger); ok {
-		if err := tc.SetTLSClientConfig(tlsConfig); err != nil {
-			c.log.Errorf("%v", err)
-		}
-		return c
-	}
-
-	// default standard transport handling
-	transport, ok := c.httpClient.Transport.(*http.Transport)
-	if !ok {
-		c.log.Errorf("SetTLSClientConfig: %v", ErrNotHttpTransportType)
-		return c
-	}
-	transport.TLSClientConfig = tlsConfig
-
-	return c
-}
-
 // ProxyURL method returns the proxy URL if set otherwise nil.
 func (c *Client) ProxyURL() *url.URL {
 	c.lock.RLock()
@@ -1174,11 +1123,7 @@ func (c *Client) Transport() http.RoundTripper {
 //	}
 //	client.SetTransport(transport)
 //
-// NOTE:
-//   - If transport is not the type of [http.Transport], you may lose the
-//     ability to set a few Resty client settings. However, if you implement
-//     [TLSClientConfiger] interface, then TLS client config is possible to set.
-//   - It overwrites the Resty client transport instance and its configurations.
+// NOTE: It overwrites the Resty client transport instance and its configurations.
 func (c *Client) SetTransport(transport http.RoundTripper) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1622,26 +1567,6 @@ func (c *Client) execute(req *Request) (*Response, error) {
 
 	err = response.Err
 	return response, err
-}
-
-// getting TLS client config if not exists then create one
-func (c *Client) tlsConfig() (*tls.Config, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	if tc, ok := c.httpClient.Transport.(TLSClientConfiger); ok {
-		return tc.TLSClientConfig(), nil
-	}
-
-	transport, ok := c.httpClient.Transport.(*http.Transport)
-	if !ok {
-		return nil, ErrNotHttpTransportType
-	}
-
-	if transport.TLSClientConfig == nil {
-		transport.TLSClientConfig = &tls.Config{}
-	}
-	return transport.TLSClientConfig, nil
 }
 
 // just an internal helper method

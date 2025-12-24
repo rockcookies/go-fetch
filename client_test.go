@@ -11,7 +11,6 @@ import (
 	"compress/lzw"
 	"context"
 	cryprand "crypto/rand"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -138,78 +137,6 @@ func (rt *CustomRoundTripper1) RoundTrip(_ *http.Request) (*http.Response, error
 	return &http.Response{}, nil
 }
 
-// CustomRoundTripper2 just for test
-type CustomRoundTripper2 struct {
-	http.RoundTripper
-	TLSClientConfiger
-	tlsConfig *tls.Config
-	returnErr bool
-}
-
-// RoundTrip just for test
-func (rt *CustomRoundTripper2) RoundTrip(_ *http.Request) (*http.Response, error) {
-	if rt.returnErr {
-		return nil, errors.New("test req mock error")
-	}
-	return &http.Response{}, nil
-}
-
-func (rt *CustomRoundTripper2) TLSClientConfig() *tls.Config {
-	return rt.tlsConfig
-}
-
-func (rt *CustomRoundTripper2) SetTLSClientConfig(tlsConfig *tls.Config) error {
-	if rt.returnErr {
-		return errors.New("test mock error")
-	}
-	rt.tlsConfig = tlsConfig
-	return nil
-}
-
-func TestClientTLSConfigerInterface(t *testing.T) {
-	t.Run("assert transport and custom roundtripper", func(t *testing.T) {
-		c := dcnl()
-
-		assertNotNil(t, c.Transport())
-		assertEqual(t, "http.Transport", inferType(c.Transport()).String())
-
-		ct := &CustomRoundTripper2{}
-		c.SetTransport(ct)
-		assertNotNil(t, c.Transport())
-		assertEqual(t, "fetch.CustomRoundTripper2", inferType(c.Transport()).String())
-	})
-
-	t.Run("get and set tls config", func(t *testing.T) {
-		c := dcnl()
-
-		ct := &CustomRoundTripper2{}
-		c.SetTransport(ct)
-
-		tlsConfig := &tls.Config{InsecureSkipVerify: true}
-		c.SetTLSClientConfig(tlsConfig)
-		assertEqual(t, tlsConfig, c.TLSClientConfig())
-	})
-
-	t.Run("get tls config error", func(t *testing.T) {
-		c := dcnl()
-
-		ct := &CustomRoundTripper1{}
-		c.SetTransport(ct)
-		assertNil(t, c.TLSClientConfig())
-	})
-
-	t.Run("set tls config error", func(t *testing.T) {
-		c := dcnl()
-
-		ct := &CustomRoundTripper2{returnErr: true}
-		c.SetTransport(ct)
-
-		tlsConfig := &tls.Config{InsecureSkipVerify: true}
-		c.SetTLSClientConfig(tlsConfig)
-		assertNil(t, c.TLSClientConfig())
-	})
-}
-
 func TestClientRequestMiddlewareModification(t *testing.T) {
 	tc := dcnl()
 	tc.AddRequestMiddleware(func(c *Client, r *Request) error {
@@ -317,8 +244,6 @@ func TestClientSettingsCoverage(t *testing.T) {
 
 	ct.SetProxy("http://localhost:8080")
 	ct.RemoveProxy()
-
-	ct.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 
 	ct.outputLogTo(io.Discard)
 	// [End] Custom Transport scenario
@@ -506,7 +431,7 @@ func TestClientRoundTripper(t *testing.T) {
 	c := NewWithClient(&http.Client{})
 	c.outputLogTo(io.Discard)
 
-	rt := &CustomRoundTripper2{}
+	rt := &CustomRoundTripper1{}
 	c.SetTransport(rt)
 
 	ct, err := c.HTTPTransport()
@@ -833,7 +758,7 @@ func TestClientOnResponseError(t *testing.T) {
 				}
 			}()
 			c := dcnl().
-				SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
+				SetTransport(ts.Client().Transport).
 				OnError(func(r *Request, err error) {
 					assertErrorHook(r, err)
 					errorHook1++

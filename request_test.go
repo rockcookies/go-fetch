@@ -8,7 +8,6 @@ package fetch
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -1337,7 +1336,7 @@ func TestRequestOverridesClientAuthorizationHeader(t *testing.T) {
 	defer ts.Close()
 
 	c := dcnl()
-	c.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
+	c.SetTransport(ts.Client().Transport).
 		SetHeader("Authorization", "some token").
 		SetBaseURL(ts.URL + "/")
 
@@ -1697,8 +1696,8 @@ func TestTraceInfoOnTimeoutWithSetTimeout(t *testing.T) {
 		defer ts.Close()
 
 		client := New().
+			SetTransport(ts.Client().Transport).
 			SetTimeout(5 * time.Second).
-			SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
 			SetTrace(true)
 
 		resp, err := client.R().Get(ts.URL)
