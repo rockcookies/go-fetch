@@ -16,7 +16,7 @@ import (
 	"sync"
 )
 
-var ErrContentDecompresserNotFound = errors.New("resty: content decoder not found")
+var ErrContentDecompressorNotFound = errors.New("resty: content decoder not found")
 
 type (
 	// ContentTypeEncoder type is for encoding the request body based on header Content-Type
@@ -25,13 +25,13 @@ type (
 	// ContentTypeDecoder type is for decoding the response body based on header Content-Type
 	ContentTypeDecoder func(io.Reader, any) error
 
-	// ContentDecompresser type is for decompressing response body based on header Content-Encoding
+	// ContentDecompressor type is for decompressing response body based on header Content-Encoding
 	// ([RFC 9110])
 	//
 	// For example, gzip, deflate, etc.
 	//
 	// [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110
-	ContentDecompresser func(io.ReadCloser) (io.ReadCloser, error)
+	ContentDecompressor func(io.ReadCloser) (io.ReadCloser, error)
 )
 
 func encodeJSON(w io.Writer, v any) error {

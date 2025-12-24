@@ -219,8 +219,8 @@ type Client struct {
 	closeHooks               []CloseHook
 	contentTypeEncoders      map[string]ContentTypeEncoder
 	contentTypeDecoders      map[string]ContentTypeDecoder
-	contentDecompresserKeys  []string
-	contentDecompressers     map[string]ContentDecompresser
+	contentDecompressorKeys  []string
+	contentDecompressors     map[string]ContentDecompressor
 }
 
 //‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
@@ -880,49 +880,49 @@ func (c *Client) inferContentTypeDecoder(ct ...string) (ContentTypeDecoder, bool
 	return nil, false
 }
 
-// ContentDecompressers method returns all the registered content-encoding Decompressers.
-func (c *Client) ContentDecompressers() map[string]ContentDecompresser {
+// ContentDecompressors method returns all the registered content-encoding Decompressors.
+func (c *Client) ContentDecompressors() map[string]ContentDecompressor {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.contentDecompressers
+	return c.contentDecompressors
 }
 
-// AddContentDecompresser method adds the user-provided Content-Encoding ([RFC 9110]) Decompresser
+// AddContentDecompressor method adds the user-provided Content-Encoding ([RFC 9110]) Decompressor
 // and directive into a client.
 //
-// NOTE: It overwrites the Decompresser function if the given Content-Encoding directive already exists.
+// NOTE: It overwrites the Decompressor function if the given Content-Encoding directive already exists.
 //
 // [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110
-func (c *Client) AddContentDecompresser(k string, d ContentDecompresser) *Client {
+func (c *Client) AddContentDecompressor(k string, d ContentDecompressor) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if !slices.Contains(c.contentDecompresserKeys, k) {
-		c.contentDecompresserKeys = slices.Insert(c.contentDecompresserKeys, 0, k)
+	if !slices.Contains(c.contentDecompressorKeys, k) {
+		c.contentDecompressorKeys = slices.Insert(c.contentDecompressorKeys, 0, k)
 	}
-	c.contentDecompressers[k] = d
+	c.contentDecompressors[k] = d
 	return c
 }
 
-// ContentDecompresserKeys method returns all the registered content-encoding Decompressers
+// ContentDecompressorKeys method returns all the registered content-encoding Decompressors
 // keys as comma-separated string.
-func (c *Client) ContentDecompresserKeys() string {
+func (c *Client) ContentDecompressorKeys() string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return strings.Join(c.contentDecompresserKeys, ", ")
+	return strings.Join(c.contentDecompressorKeys, ", ")
 }
 
-// SetContentDecompresserKeys method sets given Content-Encoding ([RFC 9110]) directives into the client instance.
+// SetContentDecompressorKeys method sets given Content-Encoding ([RFC 9110]) directives into the client instance.
 //
-// It checks the given Content-Encoding exists in the [ContentDecompresser] list before assigning it,
+// It checks the given Content-Encoding exists in the [ContentDecompressor] list before assigning it,
 // if it does not exist, it will skip that directive.
 //
-// Use this method to overwrite the default order. If a new content Decompresser is added,
+// Use this method to overwrite the default order. If a new content Decompressor is added,
 // that directive will be the first.
 //
 // [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110
-func (c *Client) SetContentDecompresserKeys(keys []string) *Client {
+func (c *Client) SetContentDecompressorKeys(keys []string) *Client {
 	result := make([]string, 0)
-	decoders := c.ContentDecompressers()
+	decoders := c.ContentDecompressors()
 	for _, k := range keys {
 		if _, f := decoders[k]; f {
 			result = append(result, k)
@@ -931,7 +931,7 @@ func (c *Client) SetContentDecompresserKeys(keys []string) *Client {
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.contentDecompresserKeys = result
+	c.contentDecompressorKeys = result
 	return c
 }
 
@@ -2086,8 +2086,8 @@ func (c *Client) Clone(ctx context.Context) *Client {
 
 	cc.contentTypeEncoders = maps.Clone(c.contentTypeEncoders)
 	cc.contentTypeDecoders = maps.Clone(c.contentTypeDecoders)
-	cc.contentDecompressers = maps.Clone(c.contentDecompressers)
-	copy(cc.contentDecompresserKeys, c.contentDecompresserKeys)
+	cc.contentDecompressors = maps.Clone(c.contentDecompressors)
+	copy(cc.contentDecompressorKeys, c.contentDecompressorKeys)
 
 	if c.proxyURL != nil {
 		cc.proxyURL, _ = url.Parse(c.proxyURL.String())
@@ -2150,7 +2150,7 @@ func (c *Client) execute(req *Request) (*Response, error) {
 	}
 	if resp != nil {
 		response.Body = resp.Body
-		if err = response.wrapContentDecompresser(); err != nil {
+		if err = response.wrapContentDecompressor(); err != nil {
 			return response, err
 		}
 

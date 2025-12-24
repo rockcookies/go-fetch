@@ -837,17 +837,17 @@ func TestLzwCompress(t *testing.T) {
 	// Not found scenario
 	_, err := c.R().Get(ts.URL + "/lzw-test")
 	assertNotNil(t, err)
-	assertEqual(t, ErrContentDecompresserNotFound, err)
+	assertEqual(t, ErrContentDecompressorNotFound, err)
 
 	// Register LZW content decoder
-	c.AddContentDecompresser("compress", func(r io.ReadCloser) (io.ReadCloser, error) {
+	c.AddContentDecompressor("compress", func(r io.ReadCloser) (io.ReadCloser, error) {
 		l := &lzwReader{
 			s: r,
 			r: lzw.NewReader(r, lzw.LSB, 8),
 		}
 		return l, nil
 	})
-	c.SetContentDecompresserKeys([]string{"compress"})
+	c.SetContentDecompressorKeys([]string{"compress"})
 
 	testcases := []struct{ url, want string }{
 		{ts.URL + "/lzw-test", "This is LZW response testing"},
