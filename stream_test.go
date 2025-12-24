@@ -1,4 +1,4 @@
-package resty
+package fetch
 
 import (
 	"bytes"

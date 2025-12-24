@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 // SPDX-License-Identifier: MIT
 
-package resty
+package fetch
 
 import (
 	"bytes"
@@ -647,8 +647,7 @@ func TestMultipartRequest_createMultipart(t *testing.T) {
 	})
 }
 
-type returnValueTestWriter struct {
-}
+type returnValueTestWriter struct{}
 
 func (z *returnValueTestWriter) Write(p []byte) (n int, err error) {
 	return 0, nil

@@ -5,7 +5,7 @@
 //go:build !(js && wasm)
 // +build !js !wasm
 
-package resty
+package fetch
 
 import (
 	"context"

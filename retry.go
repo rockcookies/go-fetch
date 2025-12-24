@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 // SPDX-License-Identifier: MIT
 
-package resty
+package fetch
 
 import (
 	"crypto/tls"
@@ -145,8 +145,8 @@ func (b *backoffWithJitter) randDuration(center time.Duration) time.Duration {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	var ri = int64(center)
-	var jitter = b.rnd.Int63n(ri)
+	ri := int64(center)
+	jitter := b.rnd.Int63n(ri)
 	return time.Duration(math.Abs(float64(ri + jitter)))
 }
 

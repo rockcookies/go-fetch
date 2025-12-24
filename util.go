@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 // SPDX-License-Identifier: MIT
 
-package resty
+package fetch
 
 import (
 	"bytes"
@@ -150,7 +150,7 @@ var (
 func createDirectory(dir string) (err error) {
 	if _, err = os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
-			if err = mkdirAll(dir, 0755); err != nil {
+			if err = mkdirAll(dir, 0o755); err != nil {
 				return
 			}
 		}

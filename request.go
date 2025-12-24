@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 // SPDX-License-Identifier: MIT
 
-package resty
+package fetch
 
 import (
 	"bytes"
@@ -15,13 +15,11 @@ import (
 	"io"
 	"maps"
 	"mime/multipart"
-	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
 	"reflect"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -1505,7 +1503,6 @@ func (r *Request) Execute(method, url string) (res *Response, err error) {
 		r.client.onErrorHooks(r, res, err)
 	}
 
-	r.sendLoadBalancerFeedback(res, err)
 	backToBufPool(r.bodyBuf)
 	return
 }
@@ -1724,35 +1721,6 @@ func (r *Request) isPayloadSupported() bool {
 	}
 
 	return false
-}
-
-func (r *Request) sendLoadBalancerFeedback(res *Response, err error) {
-	if r.client.LoadBalancer() == nil {
-		return
-	}
-
-	success := true
-
-	// load balancer feedback mainly focuses on connection
-	// failures and status code >= 500
-	// so that we can prevent sending the request to
-	// that server which may fail
-	if err != nil {
-		var noe *net.OpError
-		if errors.As(err, &noe) {
-			success = !errors.Is(noe.Err, syscall.ECONNREFUSED) || noe.Timeout()
-		}
-	}
-	if success && res != nil &&
-		(res.StatusCode() >= 500 && res.StatusCode() != http.StatusNotImplemented) {
-		success = false
-	}
-
-	r.client.LoadBalancer().Feedback(&RequestFeedback{
-		BaseURL: r.baseURL,
-		Success: success,
-		Attempt: r.Attempt,
-	})
 }
 
 func (r *Request) resetFileReaders() error {

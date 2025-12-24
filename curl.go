@@ -3,21 +3,20 @@
 // license that can be found in the LICENSE file.
 // SPDX-License-Identifier: MIT
 
-package resty
+package fetch
 
 import (
 	"bytes"
 	"io"
 	"net/http"
-	"regexp"
-
 	"net/url"
+	"regexp"
 	"strings"
 )
 
 func buildCurlCmd(req *Request) string {
 	// generate curl raw headers
-	var curl = "curl -X " + req.Method + " "
+	curl := "curl -X " + req.Method + " "
 	headers := dumpCurlHeaders(req.RawRequest)
 	for _, kv := range *headers {
 		curl += "-H " + cmdQuote(kv[0]+": "+kv[1]) + " "

@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 // SPDX-License-Identifier: MIT
 
-package resty
+package fetch
 
 import (
 	"bytes"
@@ -16,9 +16,7 @@ import (
 	"sync"
 )
 
-var (
-	ErrContentDecompresserNotFound = errors.New("resty: content decoder not found")
-)
+var ErrContentDecompresserNotFound = errors.New("resty: content decoder not found")
 
 type (
 	// ContentTypeEncoder type is for encoding the request body based on header Content-Type

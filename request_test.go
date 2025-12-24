@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 // SPDX-License-Identifier: MIT
 
-package resty
+package fetch
 
 import (
 	"bytes"
@@ -1462,7 +1462,6 @@ func TestRequestSaveResponse(t *testing.T) {
 			Get(ts.URL)
 		assertError(t, err)
 	})
-
 }
 
 func TestContextInternal(t *testing.T) {
@@ -1828,7 +1827,6 @@ func TestTraceInfo(t *testing.T) {
 			assertEqual(t, true, tr.TotalTime == resp.Duration())
 			assertEqual(t, tr.RemoteAddr, serverAddr)
 		}
-
 	})
 
 	t.Run("enable trace on invalid request, issue #1016", func(t *testing.T) {
@@ -2067,7 +2065,6 @@ func TestDebugLoggerRequestBodyTooLarge(t *testing.T) {
 		assertNotNil(t, resp)
 		assertEqual(t, true, strings.Contains(output.String(), "REQUEST TOO LARGE"))
 	})
-
 }
 
 func TestPostMapTemporaryRedirect(t *testing.T) {
@@ -2291,7 +2288,6 @@ func TestRequestAllowPayload(t *testing.T) {
 		result1 := r.isPayloadSupported()
 		assertEqual(t, false, result1)
 	})
-
 }
 
 func TestRequestNoRetryOnNonIdempotentMethod(t *testing.T) {
@@ -2364,7 +2360,6 @@ func TestRequestContextTimeout(t *testing.T) {
 
 		assertEqual(t, true, errors.Is(err, context.DeadlineExceeded))
 	})
-
 }
 
 func TestRequestPanicContext(t *testing.T) {

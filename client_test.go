@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 // SPDX-License-Identifier: MIT
 
-package resty
+package fetch
 
 import (
 	"bytes"
@@ -87,7 +87,6 @@ func TestClientAuthScheme(t *testing.T) {
 	resp2, err2 := c.R().Get("/profile")
 	assertError(t, err2)
 	assertEqual(t, http.StatusOK, resp2.StatusCode())
-
 }
 
 func TestClientResponseMiddleware(t *testing.T) {
@@ -320,6 +319,7 @@ func (rt *CustomRoundTripper2) RoundTrip(_ *http.Request) (*http.Response, error
 func (rt *CustomRoundTripper2) TLSClientConfig() *tls.Config {
 	return rt.tlsConfig
 }
+
 func (rt *CustomRoundTripper2) SetTLSClientConfig(tlsConfig *tls.Config) error {
 	if rt.returnErr {
 		return errors.New("test mock error")
@@ -329,7 +329,6 @@ func (rt *CustomRoundTripper2) SetTLSClientConfig(tlsConfig *tls.Config) error {
 }
 
 func TestClientTLSConfigerInterface(t *testing.T) {
-
 	t.Run("assert transport and custom roundtripper", func(t *testing.T) {
 		c := dcnl()
 
@@ -391,31 +390,6 @@ func TestClientSetClientRootCertificateNotExists(t *testing.T) {
 
 	assertNil(t, err)
 	assertNil(t, transport.TLSClientConfig)
-}
-
-func TestClientSetClientRootCertificateWatcher(t *testing.T) {
-	t.Run("Cert exists", func(t *testing.T) {
-		client := dcnl()
-		client.SetClientRootCertificatesWatcher(
-			&CertWatcherOptions{PoolInterval: time.Second * 1},
-			filepath.Join(getTestDataPath(), "sample-root.pem"),
-		)
-
-		transport, err := client.HTTPTransport()
-
-		assertNil(t, err)
-		assertNotNil(t, transport.TLSClientConfig.ClientCAs)
-	})
-
-	t.Run("Cert does not exist", func(t *testing.T) {
-		client := dcnl()
-		client.SetClientRootCertificatesWatcher(nil, filepath.Join(getTestDataPath(), "not-exists-sample-root.pem"))
-
-		transport, err := client.HTTPTransport()
-
-		assertNil(t, err)
-		assertNil(t, transport.TLSClientConfig)
-	})
 }
 
 func TestClientSetClientRootCertificateFromString(t *testing.T) {
@@ -1123,7 +1097,7 @@ func TestClientOnResponseError(t *testing.T) {
 			ts := createAuthServer(t)
 			defer ts.Close()
 
-			var assertErrorHook = func(r *Request, err error) {
+			assertErrorHook := func(r *Request, err error) {
 				assertNotNil(t, r)
 				v, ok := err.(*ResponseError)
 				assertEqual(t, test.hasResponse, ok)
@@ -1454,76 +1428,6 @@ func TestClientDebugf(t *testing.T) {
 		c.debugf("hello")
 		assertEqual(t, "", b.String())
 	})
-}
-
-var _ CircuitBreakerPolicy = CircuitBreaker5xxPolicy
-
-func TestClientCircuitBreaker(t *testing.T) {
-	ts := createTestServer(func(w http.ResponseWriter, r *http.Request) {
-		t.Logf("Method: %v", r.Method)
-		t.Logf("Path: %v", r.URL.Path)
-
-		switch r.URL.Path {
-		case "/200":
-			w.WriteHeader(http.StatusOK)
-			return
-		case "/500":
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-	})
-	defer ts.Close()
-
-	failThreshold := uint32(2)
-	successThreshold := uint32(1)
-	timeout := 100 * time.Millisecond
-
-	cb := NewCircuitBreaker().
-		SetTimeout(timeout).
-		SetFailureThreshold(failThreshold).
-		SetSuccessThreshold(successThreshold).
-		SetPolicies(CircuitBreaker5xxPolicy)
-
-	c := dcnl().SetCircuitBreaker(cb)
-
-	for i := uint32(0); i < failThreshold; i++ {
-		_, err := c.R().Get(ts.URL + "/500")
-		assertNil(t, err)
-	}
-	resp, err := c.R().Get(ts.URL + "/500")
-	assertErrorIs(t, ErrCircuitBreakerOpen, err)
-	assertNil(t, resp)
-	assertEqual(t, circuitBreakerStateOpen, c.circuitBreaker.getState())
-
-	time.Sleep(timeout + 50*time.Millisecond)
-	assertEqual(t, circuitBreakerStateHalfOpen, c.circuitBreaker.getState())
-
-	_, err = c.R().Get(ts.URL + "/500")
-	assertError(t, err)
-	assertEqual(t, circuitBreakerStateOpen, c.circuitBreaker.getState())
-
-	time.Sleep(timeout + 50*time.Millisecond)
-	assertEqual(t, circuitBreakerStateHalfOpen, c.circuitBreaker.getState())
-
-	for i := uint32(0); i < successThreshold; i++ {
-		_, err := c.R().Get(ts.URL + "/200")
-		assertNil(t, err)
-	}
-	assertEqual(t, circuitBreakerStateClosed, c.circuitBreaker.getState())
-
-	resp, err = c.R().Get(ts.URL + "/200")
-	assertNil(t, err)
-	assertEqual(t, http.StatusOK, resp.StatusCode())
-
-	_, err = c.R().Get(ts.URL + "/500")
-	assertError(t, err)
-	assertEqual(t, uint32(1), c.circuitBreaker.failureCount.Load())
-
-	time.Sleep(timeout)
-
-	_, err = c.R().Get(ts.URL + "/500")
-	assertError(t, err)
-	assertEqual(t, uint32(1), c.circuitBreaker.failureCount.Load())
 }
 
 func TestClientOnClose(t *testing.T) {

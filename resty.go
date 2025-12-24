@@ -3,8 +3,8 @@
 // license that can be found in the LICENSE file.
 // SPDX-License-Identifier: MIT
 
-// Package resty provides Simple HTTP, REST, and SSE client library for Go.
-package resty // import "resty.dev/v3"
+// package fetch provides Simple HTTP, REST, and SSE client library for Go.
+package fetch // import "resty.dev/v3"
 
 import (
 	"math"
@@ -181,7 +181,6 @@ func createClient(hc *http.Client) *Client {
 		contentTypeDecoders:      make(map[string]ContentTypeDecoder),
 		contentDecompresserKeys:  make([]string, 0),
 		contentDecompressers:     make(map[string]ContentDecompresser),
-		certWatcherStopChan:      make(chan bool),
 	}
 
 	// Logger

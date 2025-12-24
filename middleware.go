@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 // SPDX-License-Identifier: MIT
 
-package resty
+package fetch
 
 import (
 	"bytes"
@@ -114,20 +114,12 @@ func parseRequestURL(c *Client, r *Request) error {
 
 	// If [Request.URL] is a relative path, then the following
 	// gets evaluated in the order
-	//	1. [Client.LoadBalancer] is used to obtain the base URL if not nil
-	//	2. [Client.BaseURL] is used to obtain the base URL
-	//	3. Otherwise [Request.URL] is used as-is
+	//	1. [Client.BaseURL] is used to obtain the base URL
+	//	2. Otherwise [Request.URL] is used as-is
 	if !reqURL.IsAbs() {
 		r.URL = reqURL.String()
 		if len(r.URL) > 0 && r.URL[0] != '/' {
 			r.URL = "/" + r.URL
-		}
-
-		if r.client.LoadBalancer() != nil {
-			r.baseURL, err = r.client.LoadBalancer().Next()
-			if err != nil {
-				return &invalidRequestError{Err: err}
-			}
 		}
 
 		reqURL, err = url.Parse(r.baseURL + r.URL)

@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 // SPDX-License-Identifier: MIT
 
-package resty
+package fetch
 
 import (
 	"bytes"
@@ -39,7 +39,6 @@ func TestCurlGenerateUnexecutedRequest(t *testing.T) {
 	} else {
 		t.Log("curlCmdUnexecuted: \n", curlCmdUnexecuted)
 	}
-
 }
 
 func TestCurlGenerateExecutedRequest(t *testing.T) {
