@@ -8,14 +8,11 @@ package fetch
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -857,55 +854,6 @@ func TestParseRequestBody(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestMiddlewareSaveToFileErrorCases(t *testing.T) {
-	c := dcnl()
-	tempDir := t.TempDir()
-
-	errDirMsg := "test dir error"
-	mkdirAll = func(_ string, _ os.FileMode) error {
-		return errors.New(errDirMsg)
-	}
-	errFileMsg := "test file error"
-	createFile = func(_ string) (*os.File, error) {
-		return nil, errors.New(errFileMsg)
-	}
-	t.Cleanup(func() {
-		mkdirAll = os.MkdirAll
-		createFile = os.Create
-	})
-
-	// dir create error
-	req1 := c.R()
-	req1.SetOutputFileName(filepath.Join(tempDir, "new-res-dir", "sample.txt"))
-	err1 := SaveToFileResponseMiddleware(c, &Response{Request: req1})
-	assertEqual(t, errDirMsg, err1.Error())
-
-	// file create error
-	req2 := c.R()
-	req2.SetOutputFileName(filepath.Join(tempDir, "sample.txt"))
-	err2 := SaveToFileResponseMiddleware(c, &Response{Request: req2})
-	assertEqual(t, errFileMsg, err2.Error())
-}
-
-func TestMiddlewareSaveToFileCopyError(t *testing.T) {
-	c := dcnl()
-	tempDir := t.TempDir()
-
-	errCopyMsg := "test copy error"
-	ioCopy = func(dst io.Writer, src io.Reader) (written int64, err error) {
-		return 0, errors.New(errCopyMsg)
-	}
-	t.Cleanup(func() {
-		ioCopy = io.Copy
-	})
-
-	// copy error
-	req1 := c.R()
-	req1.SetOutputFileName(filepath.Join(tempDir, "new-res-dir", "sample.txt"))
-	err1 := SaveToFileResponseMiddleware(c, &Response{Request: req1, Body: io.NopCloser(bytes.NewBufferString("Test context"))})
-	assertEqual(t, errCopyMsg, err1.Error())
 }
 
 func TestRequestURL_GH797(t *testing.T) {

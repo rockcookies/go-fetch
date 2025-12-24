@@ -206,7 +206,6 @@ func TestMultipartFormData(t *testing.T) {
 	defer ts.Close()
 	resp, err := dcnldr().
 		SetMultipartFormData(map[string]string{"first_name": "Jeevanandam", "last_name": "M", "zip_code": "00001"}).
-		SetBasicAuth("myuser", "mypass").
 		Post(ts.URL + "/profile")
 
 	assertError(t, err)
@@ -239,7 +238,6 @@ func TestMultipartFormDataFields(t *testing.T) {
 
 	resp, err := dcnldr().
 		SetMultipartFields(fields...).
-		SetBasicAuth("myuser", "mypass").
 		Post(ts.URL + "/profile")
 
 	assertError(t, err)
@@ -327,7 +325,6 @@ func TestMultipartCustomBoundary(t *testing.T) {
 		_, err := dcnldr().
 			SetMultipartFormData(map[string]string{"first_name": "Jeevanandam", "last_name": "M", "zip_code": "00001"}).
 			SetMultipartBoundary(`"custom-boundary"`).
-			SetBasicAuth("myuser", "mypass").
 			Post(ts.URL + "/profile")
 
 		assertEqual(t, "mime: invalid boundary character", err.Error())

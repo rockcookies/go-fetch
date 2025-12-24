@@ -27,7 +27,7 @@ func TestGetMethodWhenResponseIsNull(t *testing.T) {
 		w.Write([]byte("null"))
 	}))
 
-	client := New().SetRetryCount(3).EnableGenerateCurlCmd()
+	client := New().EnableGenerateCurlCmd()
 
 	var x any
 	resp, err := client.R().SetBody("{}").

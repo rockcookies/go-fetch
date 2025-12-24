@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -33,8 +32,6 @@ import (
 type Request struct {
 	URL                        string
 	Method                     string
-	AuthToken                  string
-	AuthScheme                 string
 	QueryParams                url.Values
 	FormData                   url.Values
 	PathParams                 map[string]string
@@ -48,7 +45,6 @@ type Request struct {
 	Debug                      bool
 	CloseConnection            bool
 	DoNotParseResponse         bool
-	OutputFileName             string
 	ExpectResponseContentType  string
 	ForceResponseContentType   string
 	DebugBodyLimit             int
@@ -58,24 +54,8 @@ type Request struct {
 	AllowMethodGetPayload      bool
 	AllowMethodDeletePayload   bool
 	IsDone                     bool
-	IsSaveResponse             bool
 	Timeout                    time.Duration
 	HeaderAuthorizationKey     string
-	RetryCount                 int
-	RetryWaitTime              time.Duration
-	RetryMaxWaitTime           time.Duration
-	RetryStrategy              RetryStrategyFunc
-	IsRetryDefaultConditions   bool
-	AllowNonIdempotentRetry    bool
-
-	// RetryTraceID provides GUID for retry count > 0
-	RetryTraceID string
-
-	// Attempt provides insights into no. of attempts
-	// Resty made.
-	//
-	//	first attempt + retry count = total attempts
-	Attempt int
 
 	credentials         *credentials
 	isMultiPart         bool
@@ -92,8 +72,6 @@ type Request struct {
 	baseURL             string
 	multipartBoundary   string
 	multipartFields     []*MultipartField
-	retryConditions     []RetryConditionFunc
-	retryHooks          []RetryHookFunc
 	resultCurlCmd       string
 	generateCurlCmd     bool
 	debugLogCurlCmd     bool
@@ -598,107 +576,6 @@ func (r *Request) SetContentLength(l bool) *Request {
 	return r
 }
 
-// SetBasicAuth method sets the basic authentication header in the current HTTP request.
-//
-// For Example:
-//
-//	Authorization: Basic <base64-encoded-value>
-//
-// To set the header for username "go-resty" and password "welcome"
-//
-//	client.R().SetBasicAuth("go-resty", "welcome")
-//
-// It overrides the credentials set by method [Client.SetBasicAuth].
-func (r *Request) SetBasicAuth(username, password string) *Request {
-	r.credentials = &credentials{Username: username, Password: password}
-	return r
-}
-
-// SetAuthToken method sets the auth token header(Default Scheme: Bearer) in the current HTTP request. Header example:
-//
-//	Authorization: Bearer <auth-token-value-comes-here>
-//
-// For Example: To set auth token BC594900518B4F7EAC75BD37F019E08FBC594900518B4F7EAC75BD37F019E08F
-//
-//	client.R().SetAuthToken("BC594900518B4F7EAC75BD37F019E08FBC594900518B4F7EAC75BD37F019E08F")
-//
-// It overrides the Auth token set by method [Client.SetAuthToken].
-func (r *Request) SetAuthToken(authToken string) *Request {
-	r.AuthToken = authToken
-	return r
-}
-
-// SetAuthScheme method sets the auth token scheme type in the HTTP request.
-//
-// Example Header value structure:
-//
-//	Authorization: <auth-scheme-value-set-here> <auth-token-value>
-//
-// For Example: To set the scheme to use OAuth
-//
-//	client.R().SetAuthScheme("OAuth")
-//
-//	// The outcome will be -
-//	Authorization: OAuth <auth-token-value>
-//
-// Information about Auth schemes can be found in [RFC 7235], IANA [HTTP Auth schemes]
-//
-// It overrides the `Authorization` scheme set by method [Client.SetAuthScheme].
-//
-// [RFC 7235]: https://tools.ietf.org/html/rfc7235
-// [HTTP Auth schemes]: https://www.iana.org/assignments/http-authschemes/http-authschemes.xhtml#authschemes
-func (r *Request) SetAuthScheme(scheme string) *Request {
-	r.AuthScheme = scheme
-	return r
-}
-
-// SetHeaderAuthorizationKey method sets the given HTTP header name for Authorization in the request.
-//
-// It overrides the `Authorization` header name set by method [Client.SetHeaderAuthorizationKey].
-//
-//	client.R().SetHeaderAuthorizationKey("X-Custom-Authorization")
-func (r *Request) SetHeaderAuthorizationKey(k string) *Request {
-	r.HeaderAuthorizationKey = k
-	return r
-}
-
-// SetOutputFileName method sets the output file for the current HTTP request. The current
-// HTTP response will be saved in the given file. It is similar to the `curl -o` flag.
-//
-// Absolute path or relative path can be used.
-//
-// If it is a relative path, then the output file goes under the output directory, as mentioned
-// in the [Client.SetOutputDirectory].
-//
-//	client.R().
-//		SetOutputFileName("/Users/jeeva/Downloads/ReplyWithHeader-v5.1-beta.zip").
-//		Get("http://bit.ly/1LouEKr")
-//
-// NOTE: In this scenario
-//   - [Response.BodyBytes] might be nil.
-//   - [Response].Body might have been already read.
-func (r *Request) SetOutputFileName(file string) *Request {
-	r.OutputFileName = file
-	r.SetSaveResponse(true)
-	return r
-}
-
-// SetSaveResponse method used to enable the save response option for the current requests
-//
-//	client.R().SetSaveResponse(true)
-//
-// Resty determines the save filename in the following order -
-//   - [Request.SetOutputFileName]
-//   - Content-Disposition header
-//   - Request URL using [path.Base]
-//   - Request URL hostname if path is empty or "/"
-//
-// It overrides the value set at the client instance level, see [Client.SetSaveResponse]
-func (r *Request) SetSaveResponse(save bool) *Request {
-	r.IsSaveResponse = save
-	return r
-}
-
 // SetCloseConnection method sets variable `Close` in HTTP request struct with the given
 // value. More info: https://golang.org/src/net/http/request.go
 //
@@ -964,126 +841,6 @@ func (r *Request) SetDebug(d bool) *Request {
 	return r
 }
 
-// AddRetryConditions method adds one or more retry condition functions into the request.
-// These retry conditions are executed to determine if the request can be retried.
-// The request will retry if any functions return `true`, otherwise return `false`.
-//
-// NOTE:
-//   - The default retry conditions are applied first.
-//   - The client-level retry conditions are applied to all requests.
-//   - The request-level retry conditions are executed first before the client-level
-//     retry conditions. See [Request.SetRetryConditions]
-func (r *Request) AddRetryConditions(conditions ...RetryConditionFunc) *Request {
-	r.retryConditions = append(r.retryConditions, conditions...)
-	return r
-}
-
-// SetRetryConditions method overwrites the retry conditions in the request.
-// These retry conditions are executed to determine if the request can be retried.
-// The request will retry if any function returns `true`, otherwise return `false`.
-func (r *Request) SetRetryConditions(conditions ...RetryConditionFunc) *Request {
-	r.retryConditions = conditions
-	return r
-}
-
-// AddRetryHooks method adds one or more side-effecting retry hooks in the request.
-//
-// NOTE:
-//   - All the retry hooks are executed on each request retry.
-//   - The request-level retry hooks are executed first before the client-level hooks.
-func (r *Request) AddRetryHooks(hooks ...RetryHookFunc) *Request {
-	r.retryHooks = append(r.retryHooks, hooks...)
-	return r
-}
-
-// SetRetryHooks method overwrites side-effecting retry hooks in the request.
-//
-// NOTE:
-//   - All the retry hooks are executed on each request retry.
-func (r *Request) SetRetryHooks(hooks ...RetryHookFunc) *Request {
-	r.retryHooks = hooks
-	return r
-}
-
-// SetRetryCount method enables retry on Resty client and allows you
-// to set no. of retry count.
-//
-//	first attempt + retry count = total attempts
-//
-// See [Request.SetRetryStrategy]
-//
-// NOTE:
-//   - By default, Resty only does retry on idempotent HTTP verb, [RFC 9110 Section 9.2.2], [RFC 9110 Section 18.2]
-//
-// [RFC 9110 Section 9.2.2]: https://datatracker.ietf.org/doc/html/rfc9110.html#name-idempotent-methods
-// [RFC 9110 Section 18.2]: https://datatracker.ietf.org/doc/html/rfc9110.html#name-method-registration
-func (r *Request) SetRetryCount(count int) *Request {
-	r.RetryCount = count
-	return r
-}
-
-// SetRetryWaitTime method sets the default wait time for sleep before retrying
-//
-// Default is 100 milliseconds.
-func (r *Request) SetRetryWaitTime(waitTime time.Duration) *Request {
-	r.RetryWaitTime = waitTime
-	return r
-}
-
-// SetRetryMaxWaitTime method sets the max wait time for sleep before retrying
-//
-// Default is 2 seconds.
-func (r *Request) SetRetryMaxWaitTime(maxWaitTime time.Duration) *Request {
-	r.RetryMaxWaitTime = maxWaitTime
-	return r
-}
-
-// SetRetryStrategy method used to set the custom Retry strategy on request,
-// it is used to get wait time before each retry. It overrides the retry
-// strategy set at the client instance level, see [Client.SetRetryStrategy]
-//
-// Default (nil) implies capped exponential backoff with a jitter strategy
-func (r *Request) SetRetryStrategy(rs RetryStrategyFunc) *Request {
-	r.RetryStrategy = rs
-	return r
-}
-
-// EnableRetryDefaultConditions method enables the Resty's default retry
-// conditions on request level
-func (r *Request) EnableRetryDefaultConditions() *Request {
-	r.SetRetryDefaultConditions(true)
-	return r
-}
-
-// DisableRetryDefaultConditions method disables the Resty's default retry
-// conditions on request level
-func (r *Request) DisableRetryDefaultConditions() *Request {
-	r.SetRetryDefaultConditions(false)
-	return r
-}
-
-// SetRetryDefaultConditions method is used to enable/disable the Resty's default
-// retry conditions on request level
-//
-// It overrides value set at the client instance level, see [Client.SetRetryDefaultConditions]
-func (r *Request) SetRetryDefaultConditions(b bool) *Request {
-	r.IsRetryDefaultConditions = b
-	return r
-}
-
-// SetAllowNonIdempotentRetry method is used to enable/disable non-idempotent HTTP
-// methods retry. By default, Resty only allows idempotent HTTP methods, see
-// [RFC 9110 Section 9.2.2], [RFC 9110 Section 18.2]
-//
-// It overrides value set at the client instance level, see [Client.SetAllowNonIdempotentRetry]
-//
-// [RFC 9110 Section 9.2.2]: https://datatracker.ietf.org/doc/html/rfc9110.html#name-idempotent-methods
-// [RFC 9110 Section 18.2]: https://datatracker.ietf.org/doc/html/rfc9110.html#name-method-registration
-func (r *Request) SetAllowNonIdempotentRetry(b bool) *Request {
-	r.AllowNonIdempotentRetry = b
-	return r
-}
-
 //‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // HTTP request tracing
 //_______________________________________________________________________
@@ -1243,13 +1000,12 @@ func (r *Request) TraceInfo() TraceInfo {
 	defer ct.lock.RUnlock()
 
 	ti := TraceInfo{
-		DNSLookup:      0,
-		TCPConnTime:    0,
-		ServerTime:     0,
-		IsConnReused:   ct.gotConnInfo.Reused,
-		IsConnWasIdle:  ct.gotConnInfo.WasIdle,
-		ConnIdleTime:   ct.gotConnInfo.IdleTime,
-		RequestAttempt: r.Attempt,
+		DNSLookup:     0,
+		TCPConnTime:   0,
+		ServerTime:    0,
+		IsConnReused:  ct.gotConnInfo.Reused,
+		IsConnWasIdle: ct.gotConnInfo.WasIdle,
+		ConnIdleTime:  ct.gotConnInfo.IdleTime,
 	}
 
 	if !ct.dnsStart.IsZero() && !ct.dnsDone.IsZero() {
@@ -1386,108 +1142,8 @@ func (r *Request) Execute(method, url string) (res *Response, err error) {
 	}()
 
 	r.Method = method
-
-	if r.RetryCount < 0 {
-		r.RetryCount = 0 // default behavior is no retry
-	}
-
-	isIdempotent := r.isIdempotent()
-	var backoff *backoffWithJitter
-	if r.RetryCount > 0 && isIdempotent {
-		backoff = newBackoffWithJitter(r.RetryWaitTime, r.RetryMaxWaitTime)
-		r.RetryTraceID = newGUID()
-	}
-
-	isInvalidRequestErr := false
-	// first attempt + retry count = total attempts
-	for i := 0; i <= r.RetryCount; i++ {
-		r.Attempt++
-		err = nil
-		r.URL = url
-		res, err = r.client.execute(r)
-		if err != nil {
-			if irErr, ok := err.(*invalidRequestError); ok {
-				err = irErr.Err
-				isInvalidRequestErr = true
-				break
-			}
-			if r.Context().Err() != nil {
-				if r.ctxCancelFunc != nil {
-					r.ctxCancelFunc()
-					r.ctxCancelFunc = nil
-				}
-				if !errors.Is(err, context.DeadlineExceeded) {
-					err = wrapErrors(r.Context().Err(), err)
-					break
-				}
-			}
-		}
-
-		// we have reached the maximum no. of requests
-		// or request method is not an idempotent
-		if r.Attempt-1 == r.RetryCount || !isIdempotent {
-			break
-		}
-
-		if backoff != nil {
-			needsRetry, isCtxDone := false, false
-
-			// apply default retry conditions
-			if r.IsRetryDefaultConditions {
-				needsRetry = applyRetryDefaultConditions(res, err)
-			}
-
-			// apply user-defined retry conditions if default one
-			// is still false
-			if !needsRetry && res != nil {
-				// user defined retry conditions
-				for _, retryCondition := range r.retryConditions {
-					if needsRetry = retryCondition(res, err); needsRetry {
-						break
-					}
-				}
-			}
-
-			// retry not required stop here
-			if !needsRetry {
-				break
-			}
-
-			// by default reset file readers
-			if err = r.resetFileReaders(); err != nil {
-				// if any error in reset readers, stop here
-				break
-			}
-
-			// run user-defined retry hooks
-			for _, retryHookFunc := range r.retryHooks {
-				retryHookFunc(res, err)
-			}
-
-			// let's drain the response body, before retry wait
-			drainBody(res)
-
-			waitDuration, waitErr := backoff.NextWaitDuration(r.client, res, err, r.Attempt)
-			if waitErr != nil {
-				// if any error in retry strategy, stop here
-				err = wrapErrors(waitErr, err)
-				break
-			}
-
-			timer := time.NewTimer(waitDuration)
-			select {
-			case <-r.Context().Done():
-				isCtxDone = true
-				err = wrapErrors(r.Context().Err(), err)
-				break
-			case <-timer.C:
-			}
-			timer.Stop()
-			if isCtxDone {
-				break
-			}
-		}
-	}
+	r.URL = url
+	res, err = r.client.execute(r)
 
 	if r.isMultiPart {
 		for _, mf := range r.multipartFields {
@@ -1496,12 +1152,7 @@ func (r *Request) Execute(method, url string) (res *Response, err error) {
 	}
 
 	r.IsDone = true
-
-	if isInvalidRequestErr {
-		r.client.onInvalidHooks(r, err)
-	} else {
-		r.client.onErrorHooks(r, res, err)
-	}
+	r.client.onErrorHooks(r, res, err)
 
 	backToBufPool(r.bodyBuf)
 	return
@@ -1536,11 +1187,6 @@ func (r *Request) Clone(ctx context.Context) *Request {
 	rr.QueryParams = cloneURLValues(r.QueryParams)
 	rr.PathParams = maps.Clone(r.PathParams)
 
-	// clone basic auth
-	if r.credentials != nil {
-		rr.credentials = r.credentials.Clone()
-	}
-
 	// clone cookies
 	if l := len(r.Cookies); l > 0 {
 		rr.Cookies = make([]*http.Cookie, l)
@@ -1563,7 +1209,6 @@ func (r *Request) Clone(ctx context.Context) *Request {
 
 	// reset values
 	rr.Time = time.Time{}
-	rr.Attempt = 0
 	rr.initTraceIfEnabled()
 	r.values = make(map[string]any)
 	r.multipartErrChan = nil
@@ -1721,31 +1366,6 @@ func (r *Request) isPayloadSupported() bool {
 	}
 
 	return false
-}
-
-func (r *Request) resetFileReaders() error {
-	for _, f := range r.multipartFields {
-		if err := f.resetReader(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// https://datatracker.ietf.org/doc/html/rfc9110.html#name-idempotent-methods
-// https://datatracker.ietf.org/doc/html/rfc9110.html#name-method-registration
-var idempotentMethods = map[string]struct{}{
-	MethodDelete:  {},
-	MethodGet:     {},
-	MethodHead:    {},
-	MethodOptions: {},
-	MethodPut:     {},
-	MethodTrace:   {},
-}
-
-func (r *Request) isIdempotent() bool {
-	_, found := idempotentMethods[r.Method]
-	return found || r.AllowNonIdempotentRetry
 }
 
 func (r *Request) withTimeout() *http.Request {

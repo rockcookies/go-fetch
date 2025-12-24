@@ -69,17 +69,6 @@ func TestGetGH524(t *testing.T) {
 	assertEqual(t, resp.Request.Header.Get("Content-Type"), "") //  unable to reproduce reported issue
 }
 
-func TestRequestNegativeRetryCount(t *testing.T) {
-	ts := createGetServer(t)
-	defer ts.Close()
-
-	resp, err := dcnl().SetRetryCount(-1).R().Get(ts.URL + "/")
-
-	assertNil(t, err)
-	assertNotNil(t, resp)
-	assertEqual(t, "TestGet: text response", resp.String())
-}
-
 func TestGetCustomUserAgent(t *testing.T) {
 	ts := createGetServer(t)
 	defer ts.Close()
@@ -560,176 +549,6 @@ func TestPostXMLMapNotSupported(t *testing.T) {
 	assertErrorIs(t, ErrUnsupportedRequestBodyKind, err)
 }
 
-func TestRequestBasicAuth(t *testing.T) {
-	ts := createAuthServer(t)
-	defer ts.Close()
-
-	c := dcnl()
-	c.SetBaseURL(ts.URL).
-		SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
-
-	resp, err := c.R().
-		SetBasicAuth("myuser", "basicauth").
-		SetResult(&AuthSuccess{}).
-		Post("/login")
-
-	assertError(t, err)
-	assertEqual(t, http.StatusOK, resp.StatusCode())
-
-	t.Logf("Result Success: %q", resp.Result().(*AuthSuccess))
-	logResponse(t, resp)
-}
-
-func TestRequestBasicAuthWithBody(t *testing.T) {
-	ts := createAuthServer(t)
-	defer ts.Close()
-
-	c := dcnl()
-	c.SetBaseURL(ts.URL).
-		SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
-
-	resp, err := c.R().
-		SetBasicAuth("myuser", "basicauth").
-		SetBody([]string{strings.Repeat("hello", 25)}).
-		SetResult(&AuthSuccess{}).
-		Post("/login")
-
-	assertError(t, err)
-	assertEqual(t, http.StatusOK, resp.StatusCode())
-
-	t.Logf("Result Success: %q", resp.Result().(*AuthSuccess))
-	logResponse(t, resp)
-}
-
-func TestRequestInsecureBasicAuth(t *testing.T) {
-	ts := createAuthServerTLSOptional(t, false)
-	defer ts.Close()
-
-	var logBuf bytes.Buffer
-	logger := createLogger()
-	logger.l.SetOutput(&logBuf)
-
-	c := dcnl()
-	c.SetBaseURL(ts.URL)
-
-	resp, err := c.R().
-		SetBasicAuth("myuser", "basicauth").
-		SetResult(&AuthSuccess{}).
-		SetLogger(logger).
-		Post("/login")
-
-	assertError(t, err)
-	assertEqual(t, http.StatusOK, resp.StatusCode())
-	assertEqual(t, true, strings.Contains(logBuf.String(),
-		"WARN RESTY Using sensitive credentials in HTTP mode is not secure. Use HTTPS"))
-
-	t.Logf("Result Success: %q", resp.Result().(*AuthSuccess))
-	logResponse(t, resp)
-	t.Logf("captured request-level logs: %s", logBuf.String())
-}
-
-func TestRequestBasicAuthFail(t *testing.T) {
-	ts := createAuthServer(t)
-	defer ts.Close()
-
-	c := dcnl()
-	c.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
-		SetError(AuthError{})
-
-	resp, err := c.R().
-		SetBasicAuth("myuser", "basicauth1").
-		Post(ts.URL + "/login")
-
-	assertError(t, err)
-	assertEqual(t, http.StatusUnauthorized, resp.StatusCode())
-
-	t.Logf("Result Error: %q", resp.Error().(*AuthError))
-	logResponse(t, resp)
-}
-
-func TestRequestAuthToken(t *testing.T) {
-	ts := createAuthServer(t)
-	defer ts.Close()
-
-	c := dcnl()
-	c.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
-		SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF")
-
-	resp, err := c.R().
-		SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF-Request").
-		Get(ts.URL + "/profile")
-
-	assertError(t, err)
-	assertEqual(t, http.StatusOK, resp.StatusCode())
-}
-
-func TestRequestAuthScheme(t *testing.T) {
-	ts := createAuthServer(t)
-	defer ts.Close()
-
-	c := dcnl()
-	c.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
-		SetAuthScheme("OAuth").
-		SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF")
-
-	t.Run("override auth scheme", func(t *testing.T) {
-		resp, err := c.R().
-			SetAuthScheme("Bearer").
-			SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF-Request").
-			Get(ts.URL + "/profile")
-
-		assertError(t, err)
-		assertEqual(t, http.StatusOK, resp.StatusCode())
-	})
-
-	t.Run("empty auth scheme at client level GH954", func(t *testing.T) {
-		tokenValue := "004DDB79-6801-4587-B976-F093E6AC44FF"
-
-		// set client level
-		c.SetAuthScheme("").
-			SetAuthToken(tokenValue)
-
-		resp, err := c.R().
-			Get(ts.URL + "/profile")
-
-		assertError(t, err)
-		assertEqual(t, http.StatusOK, resp.StatusCode())
-		assertEqual(t, tokenValue, resp.Request.Header.Get(hdrAuthorizationKey))
-	})
-
-	t.Run("empty auth scheme at request level GH954", func(t *testing.T) {
-		tokenValue := "004DDB79-6801-4587-B976-F093E6AC44FF"
-
-		// set client level
-		c := dcnl().
-			SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
-			SetAuthToken(tokenValue)
-
-		resp, err := c.R().
-			SetAuthScheme("").
-			Get(ts.URL + "/profile")
-
-		assertError(t, err)
-		assertEqual(t, http.StatusOK, resp.StatusCode())
-		assertEqual(t, tokenValue, resp.Request.Header.Get(hdrAuthorizationKey))
-	})
-
-	t.Run("only client level auth token GH959", func(t *testing.T) {
-		tokenValue := "004DDB79-6801-4587-B976-F093E6AC44FF"
-
-		c := dcnl().
-			SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
-			SetAuthToken(tokenValue)
-
-		resp, err := c.R().
-			Get(ts.URL + "/profile")
-
-		assertError(t, err)
-		assertEqual(t, http.StatusOK, resp.StatusCode())
-		assertEqual(t, "Bearer "+tokenValue, resp.Request.Header.Get(hdrAuthorizationKey))
-	})
-}
-
 func TestFormData(t *testing.T) {
 	ts := createFormPostServer(t)
 	defer ts.Close()
@@ -742,7 +561,7 @@ func TestFormData(t *testing.T) {
 
 	resp, err := c.R().
 		SetFormData(map[string]string{"first_name": "Jeevanandam", "last_name": "M", "zip_code": "00001"}).
-		SetBasicAuth("myuser", "mypass").
+		// Removed: SetBasicAuth call
 		Post(ts.URL + "/profile")
 
 	assertError(t, err)
@@ -784,7 +603,7 @@ func TestFormDataDisableWarn(t *testing.T) {
 	resp, err := c.R().
 		SetDebug(true).
 		SetFormData(map[string]string{"first_name": "Jeevanandam", "last_name": "M", "zip_code": "00001"}).
-		SetBasicAuth("myuser", "mypass").
+		// Removed: SetBasicAuth call
 		Post(ts.URL + "/profile")
 
 	assertError(t, err)
@@ -1104,7 +923,6 @@ func TestRawFileUploadByBody(t *testing.T) {
 	resp, err := dcnldr().
 		SetBody(fileBytes).
 		SetContentLength(true).
-		SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF").
 		Put(ts.URL + "/raw-upload")
 
 	assertError(t, err)
@@ -1345,123 +1163,11 @@ func TestSetHeaderMultipleValue(t *testing.T) {
 	assertEqual(t, "Bearer xyz", r.Header.Get("authorization"))
 }
 
-func TestOutputFileWithBaseDirAndRelativePath(t *testing.T) {
-	ts := createGetServer(t)
-	defer ts.Close()
-	defer cleanupFiles(".testdata/dir-sample")
-
-	baseOutputDir := filepath.Join(getTestDataPath(), "dir-sample")
-	client := dcnl().
-		SetRedirectPolicy(FlexibleRedirectPolicy(10)).
-		SetOutputDirectory(baseOutputDir).
-		SetDebug(true)
-
-	outputFilePath := "go-resty/test-img-success.png"
-	resp, err := client.R().
-		SetOutputFileName(outputFilePath).
-		Get(ts.URL + "/my-image.png")
-
-	assertError(t, err)
-	assertEqual(t, true, resp.Size() != 0)
-	assertEqual(t, true, resp.Duration() > 0)
-
-	f, err1 := os.Open(filepath.Join(baseOutputDir, outputFilePath))
-	defer closeq(f)
-	assertError(t, err1)
-}
-
 func TestOutputFileWithBaseDirError(t *testing.T) {
 	c := dcnl().SetRedirectPolicy(FlexibleRedirectPolicy(10)).
 		SetOutputDirectory(filepath.Join(getTestDataPath(), `go-resty\0`))
 
 	_ = c
-}
-
-func TestOutputPathDirNotExists(t *testing.T) {
-	ts := createGetServer(t)
-	defer ts.Close()
-	defer cleanupFiles(filepath.Join(".testdata", "not-exists-dir"))
-
-	client := dcnl().
-		SetRedirectPolicy(FlexibleRedirectPolicy(10)).
-		SetOutputDirectory(filepath.Join(getTestDataPath(), "not-exists-dir"))
-
-	resp, err := client.R().
-		SetOutputFileName("test-img-success.png").
-		Get(ts.URL + "/my-image.png")
-
-	assertError(t, err)
-	assertEqual(t, true, resp.Size() != 0)
-	assertEqual(t, true, resp.Duration() > 0)
-}
-
-func TestOutputFileAbsPath(t *testing.T) {
-	ts := createGetServer(t)
-	defer ts.Close()
-	defer cleanupFiles(filepath.Join(".testdata", "go-resty"))
-
-	outputFile := filepath.Join(getTestDataPath(), "go-resty", "test-img-success-2.png")
-
-	res, err := dcnlr().
-		SetOutputFileName(outputFile).
-		Get(ts.URL + "/my-image.png")
-
-	assertError(t, err)
-	assertEqual(t, int64(2579468), res.Size())
-
-	_, err = os.Stat(outputFile)
-	assertNil(t, err)
-}
-
-func TestRequestSaveResponse(t *testing.T) {
-	ts := createGetServer(t)
-	defer ts.Close()
-	defer cleanupFiles(filepath.Join(".testdata", "go-resty"))
-
-	c := dcnl().
-		SetSaveResponse(true).
-		SetOutputDirectory(filepath.Join(getTestDataPath(), "go-resty"))
-
-	assertEqual(t, true, c.IsSaveResponse())
-
-	t.Run("content-disposition save response request", func(t *testing.T) {
-		outputFile := filepath.Join(getTestDataPath(), "go-resty", "test-img-success-2.png")
-		c.SetSaveResponse(false)
-		assertEqual(t, false, c.IsSaveResponse())
-
-		res, err := c.R().
-			SetSaveResponse(true).
-			Get(ts.URL + "/my-image.png?content-disposition=true&filename=test-img-success-2.png")
-
-		assertError(t, err)
-		assertEqual(t, int64(2579468), res.Size())
-
-		_, err = os.Stat(outputFile)
-		assertNil(t, err)
-	})
-
-	t.Run("use filename from path", func(t *testing.T) {
-		outputFile := filepath.Join(getTestDataPath(), "go-resty", "my-image.png")
-		c.SetSaveResponse(false)
-		assertEqual(t, false, c.IsSaveResponse())
-
-		res, err := c.R().
-			SetSaveResponse(true).
-			Get(ts.URL + "/my-image.png")
-
-		assertError(t, err)
-		assertEqual(t, int64(2579468), res.Size())
-
-		_, err = os.Stat(outputFile)
-		assertNil(t, err)
-	})
-
-	t.Run("empty path", func(t *testing.T) {
-		_, err := c.R().
-			SetSaveResponse(true).
-			Get(ts.URL)
-		assertError(t, err)
-	})
 }
 
 func TestContextInternal(t *testing.T) {
@@ -2017,7 +1723,6 @@ func TestDebugLoggerRequestBodyTooLarge(t *testing.T) {
 				"last_name":  strings.Repeat("C", int(debugBodySizeLimit)),
 				"zip_code":   "00001",
 			}).
-			SetBasicAuth("myuser", "mypass").
 			Post(formTs.URL + "/profile")
 		assertNil(t, err)
 		assertNotNil(t, resp)
@@ -2033,7 +1738,6 @@ func TestDebugLoggerRequestBodyTooLarge(t *testing.T) {
 				"last_name":  "C",
 				"zip_code":   "00001",
 			}).
-			SetBasicAuth("myuser", "mypass").
 			Post(formTs.URL + "/profile")
 		assertNil(t, err)
 		assertNotNil(t, resp)
@@ -2045,9 +1749,8 @@ func TestDebugLoggerRequestBodyTooLarge(t *testing.T) {
 		resp, err := New().SetDebug(true).outputLogTo(output).SetDebugBodyLimit(debugBodySizeLimit).R().
 			SetBody(`{
 			"first_name": "Alex",
-			"last_name": "`+strings.Repeat("C", int(debugBodySizeLimit))+`C",
+			"last_name": "` + strings.Repeat("C", int(debugBodySizeLimit)) + `C",
 			"zip_code": "00001"}`).
-			SetBasicAuth("myuser", "mypass").
 			Post(formTs.URL + "/profile")
 		assertNil(t, err)
 		assertNotNil(t, resp)
@@ -2059,7 +1762,6 @@ func TestDebugLoggerRequestBodyTooLarge(t *testing.T) {
 		resp, err := New().outputLogTo(output).SetDebugBodyLimit(debugBodySizeLimit).R().
 			SetDebug(true).
 			SetBody([]string{strings.Repeat("hello", debugBodySizeLimit)}).
-			SetBasicAuth("myuser", "mypass").
 			Post(formTs.URL + "/profile")
 		assertNil(t, err)
 		assertNotNil(t, resp)
@@ -2136,8 +1838,7 @@ func TestRequestClone(t *testing.T) {
 	parent.SetRawPathParam("name", "parent")
 	// set http header
 	parent.SetHeader("X-Header", "parent")
-	// set an interface value
-	parent.SetBasicAuth("parent", "")
+	// Removed: SetBasicAuth call
 	parent.bodyBuf = acquireBuffer()
 	parent.bodyBuf.WriteString("parent")
 	parent.RawRequest = &http.Request{}
@@ -2290,38 +1991,6 @@ func TestRequestAllowPayload(t *testing.T) {
 	})
 }
 
-func TestRequestNoRetryOnNonIdempotentMethod(t *testing.T) {
-	ts := createFileUploadServer(t)
-	defer ts.Close()
-
-	str := "test"
-	buf := []byte(str)
-
-	bufReader := bytes.NewReader(buf)
-	bufCpy := make([]byte, len(buf))
-
-	c := dcnl().
-		SetTimeout(time.Second * 3).
-		AddRetryHooks(
-			func(response *Response, _ error) {
-				read, err := bufReader.Read(bufCpy)
-
-				assertNil(t, err)
-				assertEqual(t, len(buf), read)
-				assertEqual(t, str, string(bufCpy))
-			},
-		)
-
-	req := c.R().
-		SetRetryCount(3).
-		SetFileReader("name", "filename", bufReader)
-	resp, err := req.Post(ts.URL + "/set-reset-multipart-readers-test")
-
-	assertNil(t, err)
-	assertEqual(t, 1, resp.Request.Attempt)
-	assertEqual(t, 500, resp.StatusCode())
-}
-
 func TestRequestContextTimeout(t *testing.T) {
 	ts := createGetServer(t)
 	defer ts.Close()
@@ -2373,35 +2042,6 @@ func TestRequestPanicContext(t *testing.T) {
 
 	//lint:ignore SA1012 test case nil check
 	_ = c.R().WithContext(nil)
-}
-
-func TestRequestSetResultAndSetOutputFile(t *testing.T) {
-	ts := createPostServer(t)
-	defer ts.Close()
-
-	outputFile := filepath.Join(getTestDataPath(), "login-success.txt")
-	defer cleanupFiles(outputFile)
-
-	c := dcnl().SetBaseURL(ts.URL)
-
-	res, err := c.R().
-		SetHeader(hdrContentTypeKey, "application/json; charset=utf-8").
-		SetBody(&credentials{Username: "testuser", Password: "testpass"}).
-		SetResponseBodyUnlimitedReads(true).
-		SetResult(&AuthSuccess{}).
-		SetOutputFileName(outputFile).
-		Post("/login")
-
-	assertError(t, err)
-	assertEqual(t, http.StatusOK, res.StatusCode())
-	assertEqual(t, int64(50), res.Size())
-
-	loginResult := res.Result().(*AuthSuccess)
-	assertEqual(t, "success", loginResult.ID)
-	assertEqual(t, "login successful", loginResult.Message)
-
-	fileContent, _ := os.ReadFile(outputFile)
-	assertEqual(t, `{ "id": "success", "message": "login successful" }`, string(fileContent))
 }
 
 func TestRequestBodyContentLength(t *testing.T) {
@@ -2466,43 +2106,6 @@ func TestRequestFuncs(t *testing.T) {
 	assertEqual(t, "TestGet: text response", resp.String())
 }
 
-func TestHTTPWarnGH970(t *testing.T) {
-	lookupText := "Using sensitive credentials in HTTP mode is not secure. Use HTTPS"
-
-	t.Run("SSL used", func(t *testing.T) {
-		ts := createAuthServerTLSOptional(t, true)
-		defer ts.Close()
-
-		c, lb := dcldb()
-		c.SetBaseURL(ts.URL).
-			SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
-
-		res, err := c.R().
-			SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF").
-			Get("/profile")
-
-		assertNil(t, err)
-		assertEqual(t, true, strings.Contains(res.String(), "profile fetch successful"))
-		assertEqual(t, false, strings.Contains(lb.String(), lookupText))
-	})
-
-	t.Run("non-SSL used", func(t *testing.T) {
-		ts := createAuthServerTLSOptional(t, false)
-		defer ts.Close()
-
-		c, lb := dcldb()
-		c.SetBaseURL(ts.URL)
-
-		res, err := c.R().
-			SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF").
-			Get("/profile")
-
-		assertNil(t, err)
-		assertEqual(t, true, strings.Contains(res.String(), "profile fetch successful"))
-		assertEqual(t, true, strings.Contains(lb.String(), lookupText))
-	})
-}
-
 // This test methods exist for test coverage purpose
 // to validate the getter and setter
 func TestRequestSettingsCoverage(t *testing.T) {
@@ -2534,17 +2137,9 @@ func TestRequestSettingsCoverage(t *testing.T) {
 	r4.DisableDebug()
 	assertEqual(t, false, r4.Debug)
 
-	r5 := c.R()
-	assertEqual(t, true, r5.IsRetryDefaultConditions)
-	r5.DisableRetryDefaultConditions()
-	assertEqual(t, false, r5.IsRetryDefaultConditions)
-	r5.EnableRetryDefaultConditions()
-	assertEqual(t, true, r5.IsRetryDefaultConditions)
+	// Removed: r5 IsRetryDefaultConditions, DisableRetryDefaultConditions, EnableRetryDefaultConditions - retry functionality removed
 
-	r6 := c.R()
-	customAuthHeader := "X-Custom-Authorization"
-	r6.SetHeaderAuthorizationKey(customAuthHeader)
-	assertEqual(t, customAuthHeader, r6.HeaderAuthorizationKey)
+	// Removed: r6 SetHeaderAuthorizationKey - auth functionality removed
 
 	invalidJsonBytes := []byte(`{\" \": "value here"}`)
 	result := jsonIndent(invalidJsonBytes)

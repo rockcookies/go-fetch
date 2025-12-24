@@ -9,13 +9,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"net/url"
-	"path"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -42,8 +39,6 @@ func PrepareRequestMiddleware(c *Client, r *Request) (err error) {
 	// at this point, possible error from `http.NewRequestWithContext`
 	// is URL-related, and those get caught up in the `parseRequestURL`
 	createRawRequest(c, r)
-
-	addCredentials(c, r)
 
 	_ = r.generateCurlCommand()
 
@@ -263,29 +258,6 @@ func createRawRequest(c *Client, r *Request) (err error) {
 	return
 }
 
-func addCredentials(c *Client, r *Request) error {
-	credentialsAdded := false
-	// Basic Auth
-	if r.credentials != nil {
-		credentialsAdded = true
-		r.RawRequest.SetBasicAuth(r.credentials.Username, r.credentials.Password)
-	}
-
-	// Build the token Auth header
-	if !isStringEmpty(r.AuthToken) {
-		credentialsAdded = true
-		r.RawRequest.Header.Set(r.HeaderAuthorizationKey, strings.TrimSpace(r.AuthScheme+" "+r.AuthToken))
-	}
-
-	if !c.IsDisableWarn() && credentialsAdded {
-		if r.RawRequest.URL.Scheme == "http" {
-			r.log.Warnf("Using sensitive credentials in HTTP mode is not secure. Use HTTPS")
-		}
-	}
-
-	return nil
-}
-
 func handleMultipart(c *Client, r *Request) error {
 	for k, v := range c.FormData() {
 		if _, ok := r.FormData[k]; ok {
@@ -427,14 +399,6 @@ func handleRequestBody(c *Client, r *Request) error {
 			v := b.Bytes()
 			r.Body = bytes.NewReader(v)
 		}
-
-		// do seek start for retry attempt if io.ReadSeeker
-		// interface supported
-		if r.Attempt > 1 {
-			if rs, ok := r.Body.(io.ReadSeeker); ok {
-				_, _ = rs.Seek(0, io.SeekStart)
-			}
-		}
 		return nil
 	case []byte:
 		r.bodyBuf.Write(body)
@@ -529,56 +493,3 @@ func AutoParseResponseMiddleware(c *Client, res *Response) (err error) {
 }
 
 var hostnameReplacer = strings.NewReplacer(":", "_", ".", "_")
-
-// SaveToFileResponseMiddleware method used to write HTTP response body into
-// file. The filename is determined in the following order -
-//   - [Request.SetOutputFileName]
-//   - Content-Disposition header
-//   - Request URL using [path.Base]
-func SaveToFileResponseMiddleware(c *Client, res *Response) error {
-	if res.Err != nil || !res.Request.IsSaveResponse {
-		return nil
-	}
-
-	file := res.Request.OutputFileName
-	if isStringEmpty(file) {
-		cntDispositionValue := res.Header().Get(hdrContentDisposition)
-		if len(cntDispositionValue) > 0 {
-			if _, params, err := mime.ParseMediaType(cntDispositionValue); err == nil {
-				file = params["filename"]
-			}
-		}
-		if isStringEmpty(file) {
-			rURL, _ := url.Parse(res.Request.URL)
-			if isStringEmpty(rURL.Path) || rURL.Path == "/" {
-				file = hostnameReplacer.Replace(rURL.Host)
-			} else {
-				file = path.Base(rURL.Path)
-			}
-		}
-	}
-
-	if len(c.OutputDirectory()) > 0 && !filepath.IsAbs(file) {
-		file = filepath.Join(c.OutputDirectory(), string(filepath.Separator), file)
-	}
-
-	file = filepath.Clean(file)
-	if err := createDirectory(filepath.Dir(file)); err != nil {
-		return err
-	}
-
-	outFile, err := createFile(file)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		closeq(outFile)
-		closeq(res.Body)
-	}()
-
-	// io.Copy reads maximum 32kb size, it is perfect for large file download too
-	res.size, err = ioCopy(outFile, res.Body)
-
-	return err
-}

@@ -171,9 +171,6 @@ type Client struct {
 	formData                 url.Values
 	pathParams               map[string]string
 	header                   http.Header
-	credentials              *credentials
-	authToken                string
-	authScheme               string
 	cookies                  []*http.Cookie
 	errorType                reflect.Type
 	debug                    bool
@@ -181,14 +178,6 @@ type Client struct {
 	allowMethodGetPayload    bool
 	allowMethodDeletePayload bool
 	timeout                  time.Duration
-	retryCount               int
-	retryWaitTime            time.Duration
-	retryMaxWaitTime         time.Duration
-	retryConditions          []RetryConditionFunc
-	retryHooks               []RetryHookFunc
-	retryStrategy            RetryStrategyFunc
-	isRetryDefaultConditions bool
-	allowNonIdempotentRetry  bool
 	headerAuthorizationKey   string
 	responseBodyLimit        int64
 	resBodyUnlimitedReads    bool
@@ -199,7 +188,6 @@ type Client struct {
 	isTrace                  bool
 	debugBodyLimit           int
 	outputDirectory          string
-	isSaveResponse           bool
 	scheme                   string
 	log                      Logger
 	ctx                      context.Context
@@ -467,130 +455,6 @@ func (c *Client) SetFormData(data map[string]string) *Client {
 	return c
 }
 
-// SetBasicAuth method sets the basic authentication header in the HTTP request. For Example:
-//
-//	Authorization: Basic <base64-encoded-value>
-//
-// For Example: To set the header for username "go-resty" and password "welcome"
-//
-//	client.SetBasicAuth("go-resty", "welcome")
-//
-// This basic auth information is added to all requests from this client instance.
-// It can also be overridden at the request level.
-//
-// See [Request.SetBasicAuth].
-func (c *Client) SetBasicAuth(username, password string) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.credentials = &credentials{Username: username, Password: password}
-	return c
-}
-
-// AuthToken method returns the auth token value registered in the client instance.
-func (c *Client) AuthToken() string {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.authToken
-}
-
-// HeaderAuthorizationKey method returns the HTTP header name for Authorization from the client instance.
-func (c *Client) HeaderAuthorizationKey() string {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.headerAuthorizationKey
-}
-
-// SetHeaderAuthorizationKey method sets the given HTTP header name for Authorization in the client instance.
-//
-// It can be overridden at the request level; see [Request.SetHeaderAuthorizationKey].
-//
-//	client.SetHeaderAuthorizationKey("X-Custom-Authorization")
-func (c *Client) SetHeaderAuthorizationKey(k string) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.headerAuthorizationKey = k
-	return c
-}
-
-// SetAuthToken method sets the auth token of the `Authorization` header for all HTTP requests.
-// The default auth scheme is `Bearer`; it can be customized with the method [Client.SetAuthScheme]. For Example:
-//
-//	Authorization: <auth-scheme> <auth-token-value>
-//
-// For Example: To set auth token BC594900518B4F7EAC75BD37F019E08FBC594900518B4F7EAC75BD37F019E08F
-//
-//	client.SetAuthToken("BC594900518B4F7EAC75BD37F019E08FBC594900518B4F7EAC75BD37F019E08F")
-//
-// This auth token gets added to all the requests raised from this client instance.
-// Also, it can be overridden at the request level.
-//
-// See [Request.SetAuthToken].
-func (c *Client) SetAuthToken(token string) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.authToken = token
-	return c
-}
-
-// AuthScheme method returns the auth scheme name set in the client instance.
-//
-// See [Client.SetAuthScheme], [Request.SetAuthScheme].
-func (c *Client) AuthScheme() string {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.authScheme
-}
-
-// SetAuthScheme method sets the auth scheme type in the HTTP request. For Example:
-//
-//	Authorization: <auth-scheme-value> <auth-token-value>
-//
-// For Example: To set the scheme to use OAuth
-//
-//	client.SetAuthScheme("OAuth")
-//
-// This auth scheme gets added to all the requests raised from this client instance.
-// Also, it can be overridden at the request level.
-//
-// Information about auth schemes can be found in [RFC 7235], IANA [HTTP Auth schemes].
-//
-// See [Request.SetAuthScheme].
-//
-// [RFC 7235]: https://tools.ietf.org/html/rfc7235
-// [HTTP Auth schemes]: https://www.iana.org/assignments/http-authschemes/http-authschemes.xhtml#authschemes
-func (c *Client) SetAuthScheme(scheme string) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.authScheme = scheme
-	return c
-}
-
-// SetDigestAuth method sets the Digest Auth transport with provided credentials in the client.
-// If a server responds with 401 and sends a Digest challenge in the header `WWW-Authenticate`,
-// the request will be resent with the appropriate digest `Authorization` header.
-//
-// For Example: To set the Digest scheme with user "Mufasa" and password "Circle Of Life"
-//
-//	client.SetDigestAuth("Mufasa", "Circle Of Life")
-//
-// Information about Digest Access Authentication can be found in [RFC 7616].
-//
-// NOTE:
-//   - On the QOP `auth-int` scenario, the request body is read into memory to
-//     compute the body hash that increases memory usage.
-//   - Create a dedicated client instance to use digest auth,
-//     as it does digest auth for all the requests raised by the client.
-//
-// [RFC 7616]: https://datatracker.ietf.org/doc/html/rfc7616
-func (c *Client) SetDigestAuth(username, password string) *Client {
-	dt := &digestTransport{
-		credentials: &credentials{username, password},
-		transport:   c.Transport(),
-	}
-	c.SetTransport(dt)
-	return c
-}
-
 // R method creates a new request instance; it's used for Get, Post, Put, Delete, Patch, Head, Options, etc.
 func (c *Client) R() *Request {
 	c.lock.RLock()
@@ -604,14 +468,6 @@ func (c *Client) R() *Request {
 		Timeout:                    c.timeout,
 		Debug:                      c.debug,
 		IsTrace:                    c.isTrace,
-		IsSaveResponse:             c.isSaveResponse,
-		AuthScheme:                 c.authScheme,
-		AuthToken:                  c.authToken,
-		RetryCount:                 c.retryCount,
-		RetryWaitTime:              c.retryWaitTime,
-		RetryMaxWaitTime:           c.retryMaxWaitTime,
-		RetryStrategy:              c.retryStrategy,
-		IsRetryDefaultConditions:   c.isRetryDefaultConditions,
 		CloseConnection:            c.closeConnection,
 		DoNotParseResponse:         c.notParseResponse,
 		DebugBodyLimit:             c.debugBodyLimit,
@@ -619,8 +475,6 @@ func (c *Client) R() *Request {
 		ResponseBodyUnlimitedReads: c.resBodyUnlimitedReads,
 		AllowMethodGetPayload:      c.allowMethodGetPayload,
 		AllowMethodDeletePayload:   c.allowMethodDeletePayload,
-		AllowNonIdempotentRetry:    c.allowNonIdempotentRetry,
-		HeaderAuthorizationKey:     c.headerAuthorizationKey,
 
 		client:              c,
 		baseURL:             c.baseURL,
@@ -631,9 +485,6 @@ func (c *Client) R() *Request {
 		generateCurlCmd:     c.generateCurlCmd,
 		debugLogCurlCmd:     c.debugLogCurlCmd,
 		unescapeQueryParams: c.unescapeQueryParams,
-		credentials:         c.credentials,
-		retryConditions:     slices.Clone(c.retryConditions),
-		retryHooks:          slices.Clone(c.retryHooks),
 	}
 
 	if c.ctx != nil {
@@ -1199,190 +1050,6 @@ func (c *Client) SetRedirectPolicy(policies ...RedirectPolicy) *Client {
 	return c
 }
 
-// RetryCount method returns the retry count value from the client instance.
-func (c *Client) RetryCount() int {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.retryCount
-}
-
-// SetRetryCount method enables retry on Resty client and allows you
-// to set no. of retry count.
-//
-//	first attempt + retry count = total attempts
-//
-// See [Request.SetRetryStrategy]
-//
-// NOTE:
-//   - By default, Resty only does retry on idempotent HTTP verb, [RFC 9110 Section 9.2.2], [RFC 9110 Section 18.2]
-//
-// [RFC 9110 Section 9.2.2]: https://datatracker.ietf.org/doc/html/rfc9110.html#name-idempotent-methods
-// [RFC 9110 Section 18.2]: https://datatracker.ietf.org/doc/html/rfc9110.html#name-method-registration
-func (c *Client) SetRetryCount(count int) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.retryCount = count
-	return c
-}
-
-// RetryWaitTime method returns the retry wait time that is used to sleep before
-// retrying the request.
-func (c *Client) RetryWaitTime() time.Duration {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.retryWaitTime
-}
-
-// SetRetryWaitTime method sets the default wait time for sleep before retrying
-//
-// Default is 100 milliseconds.
-func (c *Client) SetRetryWaitTime(waitTime time.Duration) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.retryWaitTime = waitTime
-	return c
-}
-
-// RetryMaxWaitTime method returns the retry max wait time that is used to sleep
-// before retrying the request.
-func (c *Client) RetryMaxWaitTime() time.Duration {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.retryMaxWaitTime
-}
-
-// SetRetryMaxWaitTime method sets the max wait time for sleep before retrying
-//
-// Default is 2 seconds.
-func (c *Client) SetRetryMaxWaitTime(maxWaitTime time.Duration) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.retryMaxWaitTime = maxWaitTime
-	return c
-}
-
-// RetryStrategy method returns the retry strategy function; otherwise, it is nil.
-//
-// See [Client.SetRetryStrategy]
-func (c *Client) RetryStrategy() RetryStrategyFunc {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.retryStrategy
-}
-
-// SetRetryStrategy method used to set the custom Retry strategy into Resty client,
-// it is used to get wait time before each retry. It can be overridden at request
-// level, see [Request.SetRetryStrategy]
-//
-// Default (nil) implies exponential backoff with a jitter strategy
-func (c *Client) SetRetryStrategy(rs RetryStrategyFunc) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.retryStrategy = rs
-	return c
-}
-
-// EnableRetryDefaultConditions method enables the Resty's default retry conditions
-func (c *Client) EnableRetryDefaultConditions() *Client {
-	c.SetRetryDefaultConditions(true)
-	return c
-}
-
-// DisableRetryDefaultConditions method disables the Resty's default retry conditions
-func (c *Client) DisableRetryDefaultConditions() *Client {
-	c.SetRetryDefaultConditions(false)
-	return c
-}
-
-// IsRetryDefaultConditions method returns true if Resty's default retry conditions
-// are enabled otherwise false
-//
-// Default value is `true`
-func (c *Client) IsRetryDefaultConditions() bool {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.isRetryDefaultConditions
-}
-
-// SetRetryDefaultConditions method is used to enable/disable the Resty's default
-// retry conditions
-//
-// It can be overridden at request level, see [Request.SetRetryDefaultConditions]
-func (c *Client) SetRetryDefaultConditions(b bool) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.isRetryDefaultConditions = b
-	return c
-}
-
-// AllowNonIdempotentRetry method returns true if the client is enabled to allow
-// non-idempotent HTTP methods retry; otherwise, it is `false`
-//
-// Default value is `false`
-func (c *Client) AllowNonIdempotentRetry() bool {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.allowNonIdempotentRetry
-}
-
-// SetAllowNonIdempotentRetry method is used to enable/disable non-idempotent HTTP
-// methods retry. By default, Resty only allows idempotent HTTP methods, see
-// [RFC 9110 Section 9.2.2], [RFC 9110 Section 18.2]
-//
-// It can be overridden at request level, see [Request.SetAllowNonIdempotentRetry]
-//
-// [RFC 9110 Section 9.2.2]: https://datatracker.ietf.org/doc/html/rfc9110.html#name-idempotent-methods
-// [RFC 9110 Section 18.2]: https://datatracker.ietf.org/doc/html/rfc9110.html#name-method-registration
-func (c *Client) SetAllowNonIdempotentRetry(b bool) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.allowNonIdempotentRetry = b
-	return c
-}
-
-// RetryConditions method returns all the retry condition functions.
-func (c *Client) RetryConditions() []RetryConditionFunc {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.retryConditions
-}
-
-// AddRetryConditions method adds one or more retry condition functions into the request.
-// These retry conditions are executed to determine if the request can be retried.
-// The request will retry if any functions return `true`, otherwise return `false`.
-//
-// NOTE:
-//   - The default retry conditions are applied first.
-//   - The client-level retry conditions are applied to all requests.
-//   - The request-level retry conditions are executed first before the client-level
-//     retry conditions. See [Request.AddRetryConditions], [Request.SetRetryConditions]
-func (c *Client) AddRetryConditions(conditions ...RetryConditionFunc) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.retryConditions = append(c.retryConditions, conditions...)
-	return c
-}
-
-// RetryHooks method returns all the retry hook functions.
-func (c *Client) RetryHooks() []RetryHookFunc {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.retryHooks
-}
-
-// AddRetryHooks method adds one or more side-effecting retry hooks to an array
-// of hooks that will be executed on each retry.
-//
-// NOTE:
-//   - All the retry hooks are executed on request retry.
-//   - The request-level retry hooks are executed first before client-level hooks.
-func (c *Client) AddRetryHooks(hooks ...RetryHookFunc) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.retryHooks = append(c.retryHooks, hooks...)
-	return c
-}
-
 // TLSClientConfig method returns the [tls.Config] from underlying client transport
 // otherwise returns nil
 func (c *Client) TLSClientConfig() *tls.Config {
@@ -1657,32 +1324,6 @@ func (c *Client) SetOutputDirectory(dirPath string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.outputDirectory = dirPath
-	return c
-}
-
-// IsSaveResponse method returns true if the save response is set to true; otherwise, false
-func (c *Client) IsSaveResponse() bool {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.isSaveResponse
-}
-
-// SetSaveResponse method used to enable the save response option at the client level for
-// all requests
-//
-//	client.SetSaveResponse(true)
-//
-// Resty determines the save filename in the following order -
-//   - [Request.SetOutputFileName]
-//   - Content-Disposition header
-//   - Request URL using [path.Base]
-//   - Request URL hostname if path is empty or "/"
-//
-// It can be overridden at request level, see [Request.SetSaveResponse]
-func (c *Client) SetSaveResponse(save bool) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.isSaveResponse = save
 	return c
 }
 
@@ -2079,10 +1720,6 @@ func (c *Client) Clone(ctx context.Context) *Client {
 	cc.formData = cloneURLValues(c.formData)
 	cc.header = c.header.Clone()
 	cc.pathParams = maps.Clone(c.pathParams)
-
-	if c.credentials != nil {
-		cc.credentials = c.credentials.Clone()
-	}
 
 	cc.contentTypeEncoders = maps.Clone(c.contentTypeEncoders)
 	cc.contentTypeDecoders = maps.Clone(c.contentTypeDecoders)

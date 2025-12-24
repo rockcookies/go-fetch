@@ -30,65 +30,6 @@ import (
 	"time"
 )
 
-func TestClientBasicAuth(t *testing.T) {
-	ts := createAuthServer(t)
-	defer ts.Close()
-
-	c := dcnl()
-	c.SetBasicAuth("myuser", "basicauth").
-		SetBaseURL(ts.URL).
-		SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
-
-	resp, err := c.R().
-		SetResult(&AuthSuccess{}).
-		Post("/login")
-
-	assertError(t, err)
-	assertEqual(t, http.StatusOK, resp.StatusCode())
-
-	t.Logf("Result Success: %q", resp.Result().(*AuthSuccess))
-	logResponse(t, resp)
-}
-
-func TestClientAuthToken(t *testing.T) {
-	ts := createAuthServer(t)
-	defer ts.Close()
-
-	c := dcnl()
-	c.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
-		SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF").
-		SetBaseURL(ts.URL + "/")
-
-	resp, err := c.R().Get("/profile")
-
-	assertError(t, err)
-	assertEqual(t, http.StatusOK, resp.StatusCode())
-}
-
-func TestClientAuthScheme(t *testing.T) {
-	ts := createAuthServer(t)
-	defer ts.Close()
-
-	c := dcnl()
-	// Ensure default Bearer
-	c.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
-		SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF").
-		SetBaseURL(ts.URL + "/")
-
-	resp, err := c.R().Get("/profile")
-
-	assertError(t, err)
-	assertEqual(t, http.StatusOK, resp.StatusCode())
-
-	// Ensure setting the scheme works as well
-	c.SetAuthScheme("Bearer")
-	assertEqual(t, "Bearer", c.AuthScheme())
-
-	resp2, err2 := c.R().Get("/profile")
-	assertError(t, err2)
-	assertEqual(t, http.StatusOK, resp2.StatusCode())
-}
-
 func TestClientResponseMiddleware(t *testing.T) {
 	ts := createGenericServer(t)
 	defer ts.Close()
@@ -408,7 +349,7 @@ func TestClientSetClientRootCertificateFromString(t *testing.T) {
 func TestClientRequestMiddlewareModification(t *testing.T) {
 	tc := dcnl()
 	tc.AddRequestMiddleware(func(c *Client, r *Request) error {
-		r.SetAuthToken("This is test auth token")
+		r.SetHeader("X-Test-Token", "This is test token")
 		return nil
 	})
 
@@ -488,29 +429,11 @@ func TestClientSettingsCoverage(t *testing.T) {
 	assertEqual(t, math.MaxInt32, c.DebugBodyLimit())
 	assertNotNil(t, c.Logger())
 	assertEqual(t, false, c.IsContentLength())
-	assertEqual(t, 0, c.RetryCount())
-	assertEqual(t, time.Millisecond*100, c.RetryWaitTime())
-	assertEqual(t, time.Second*2, c.RetryMaxWaitTime())
 	assertEqual(t, false, c.IsTrace())
-	assertEqual(t, 0, len(c.RetryConditions()))
-
-	authToken := "sample auth token value"
-	c.SetAuthToken(authToken)
-	assertEqual(t, authToken, c.AuthToken())
-
-	customAuthHeader := "X-Custom-Authorization"
-	c.SetHeaderAuthorizationKey(customAuthHeader)
-	assertEqual(t, customAuthHeader, c.HeaderAuthorizationKey())
 
 	c.SetCloseConnection(true)
 
 	c.DisableDebug()
-
-	assertEqual(t, true, c.IsRetryDefaultConditions())
-	c.DisableRetryDefaultConditions()
-	assertEqual(t, false, c.IsRetryDefaultConditions())
-	c.EnableRetryDefaultConditions()
-	assertEqual(t, true, c.IsRetryDefaultConditions())
 
 	nr := nopReader{}
 	n, err1 := nr.Read(nil)
@@ -866,51 +789,6 @@ func TestLzwCompress(t *testing.T) {
 	}
 }
 
-func TestClientLogCallbacks(t *testing.T) {
-	ts := createAuthServer(t)
-	defer ts.Close()
-
-	c, lb := dcldb()
-
-	c.OnDebugLog(func(dl *DebugLog) {
-		// request
-		// masking authorization header
-		dl.Request.Header.Set("Authorization", "Bearer *******************************")
-
-		// response
-		dl.Response.Header.Add("X-Debug-Response-Log", "Modified :)")
-		dl.Response.Body += "\nModified the response body content"
-	})
-
-	c.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
-		SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF")
-
-	resp, err := c.R().
-		SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF-Request").
-		Get(ts.URL + "/profile")
-
-	assertError(t, err)
-	assertEqual(t, http.StatusOK, resp.StatusCode())
-
-	// Validating debug log updates
-	logInfo := lb.String()
-	assertEqual(t, true, strings.Contains(logInfo, "Bearer *******************************"))
-	assertEqual(t, true, strings.Contains(logInfo, "X-Debug-Response-Log"))
-	assertEqual(t, true, strings.Contains(logInfo, "Modified the response body content"))
-
-	// overwrite scenario
-	c.OnDebugLog(func(dl *DebugLog) {
-		// overwrite debug log
-	})
-	resp, err = c.R().
-		SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF-Request").
-		Get(ts.URL + "/profile")
-	assertNil(t, err)
-	assertNotNil(t, resp)
-	assertEqual(t, int64(66), resp.Size())
-	assertEqual(t, true, strings.Contains(lb.String(), "Overwriting an existing on-debug-log callback from=resty.dev/v3.TestClientLogCallbacks.func1 to=resty.dev/v3.TestClientLogCallbacks.func2"))
-}
-
 func TestDebugLogSimultaneously(t *testing.T) {
 	ts := createGetServer(t)
 
@@ -1023,12 +901,6 @@ func TestClientOnResponseError(t *testing.T) {
 			name: "successful_request",
 		},
 		{
-			name: "http_status_error",
-			setup: func(client *Client) {
-				client.SetAuthToken("BAD")
-			},
-		},
-		{
 			name: "before_request_error",
 			setup: func(client *Client) {
 				client.AddRequestMiddleware(func(client *Client, request *Request) error {
@@ -1038,28 +910,9 @@ func TestClientOnResponseError(t *testing.T) {
 			isError: true,
 		},
 		{
-			name: "before_request_error_retry",
-			setup: func(client *Client) {
-				client.SetRetryCount(3).AddRequestMiddleware(func(client *Client, request *Request) error {
-					return fmt.Errorf("before request")
-				})
-			},
-			isError: true,
-		},
-		{
 			name: "after_response_error",
 			setup: func(client *Client) {
 				client.AddResponseMiddleware(func(client *Client, response *Response) error {
-					return fmt.Errorf("after response")
-				})
-			},
-			isError:     true,
-			hasResponse: true,
-		},
-		{
-			name: "after_response_error_retry",
-			setup: func(client *Client) {
-				client.SetRetryCount(3).AddResponseMiddleware(func(client *Client, response *Response) error {
 					return fmt.Errorf("after response")
 				})
 			},
@@ -1118,15 +971,6 @@ func TestClientOnResponseError(t *testing.T) {
 			}()
 			c := dcnl().
 				SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
-				SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF").
-				SetRetryCount(0).
-				SetRetryMaxWaitTime(time.Microsecond).
-				AddRetryConditions(func(response *Response, err error) bool {
-					if err != nil {
-						return true
-					}
-					return response.IsError()
-				}).
 				OnError(func(r *Request, err error) {
 					assertErrorHook(r, err)
 					errorHook1++
@@ -1291,7 +1135,6 @@ func TestClientClone(t *testing.T) {
 
 	// set a non-interface field
 	parent.SetBaseURL("http://localhost")
-	parent.SetBasicAuth("parent", "")
 	parent.SetProxy("http://localhost:8080")
 
 	parent.SetCookie(&http.Cookie{
@@ -1313,13 +1156,9 @@ func TestClientClone(t *testing.T) {
 	// update value of non-interface type - change will only happen on clone
 	clone.SetBaseURL("https://local.host")
 
-	clone.SetBasicAuth("clone", "clone")
-
 	// assert non-interface type
 	assertEqual(t, "http://localhost", parent.BaseURL())
 	assertEqual(t, "https://local.host", clone.BaseURL())
-	assertEqual(t, "parent", parent.credentials.Username)
-	assertEqual(t, "clone", clone.credentials.Username)
 
 	// assert interface/pointer type
 	assertEqual(t, parent.Client(), clone.Client())

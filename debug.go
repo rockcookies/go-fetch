@@ -30,15 +30,13 @@ type (
 
 	// DebugLogRequest type used to capture debug info about the [Request].
 	DebugLogRequest struct {
-		Host         string      `json:"host"`
-		URI          string      `json:"uri"`
-		Method       string      `json:"method"`
-		Proto        string      `json:"proto"`
-		Header       http.Header `json:"header"`
-		CurlCmd      string      `json:"curl_cmd"`
-		RetryTraceID string      `json:"retry_trace_id"`
-		Attempt      int         `json:"attempt"`
-		Body         string      `json:"body"`
+		Host    string      `json:"host"`
+		URI     string      `json:"uri"`
+		Method  string      `json:"method"`
+		Proto   string      `json:"proto"`
+		Header  http.Header `json:"header"`
+		CurlCmd string      `json:"curl_cmd"`
+		Body    string      `json:"body"`
 	}
 
 	// DebugLogResponse type used to capture debug info about the [Response].
@@ -72,11 +70,6 @@ func DebugLogFormatter(dl *DebugLog) string {
 		fmt.Sprintf("HEADERS:\n%s\n", composeHeaders(req.Header)) +
 		fmt.Sprintf("BODY   :\n%v\n", req.Body) +
 		"------------------------------------------------------------------------------\n"
-	if len(req.RetryTraceID) > 0 {
-		debugLog += fmt.Sprintf("RETRY TRACE ID: %s\n", req.RetryTraceID) +
-			fmt.Sprintf("ATTEMPT       : %d\n", req.Attempt) +
-			"------------------------------------------------------------------------------\n"
-	}
 
 	res := dl.Response
 	debugLog += "~~~ RESPONSE ~~~\n" +
@@ -170,10 +163,6 @@ func prepareRequestDebugInfo(c *Client, r *Request) {
 	}
 	if r.generateCurlCmd && r.debugLogCurlCmd {
 		rdl.CurlCmd = r.resultCurlCmd
-	}
-	if len(r.RetryTraceID) > 0 {
-		rdl.Attempt = r.Attempt
-		rdl.RetryTraceID = r.RetryTraceID
 	}
 
 	r.initValuesMap()

@@ -12,7 +12,6 @@ import (
 	"compress/lzw"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -762,6 +761,8 @@ func createUnixSocketEchoServer(t *testing.T) string {
 	return socketPath
 }
 
+/*
+// Commented out due to removal of Digest Auth functionality
 func createDigestServer(t *testing.T, conf *digestServerConfig) *httptest.Server {
 	if conf == nil {
 		conf = defaultDigestServerConf()
@@ -880,6 +881,7 @@ func authorizationHeaderValid(t *testing.T, r *http.Request, conf *digestServerC
 		pairs["nonce"], nonceCount, pairs["cnonce"], pairs["qop"], ha2)))
 	return kd == pairs["response"]
 }
+*/
 
 func createTestServer(fn func(w http.ResponseWriter, r *http.Request)) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(fn))
