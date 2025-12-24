@@ -169,7 +169,6 @@ func createClient(hc *http.Client) *Client {
 		header:                  http.Header{},
 		cookies:                 make([]*http.Cookie, 0),
 		pathParams:              make(map[string]string),
-		headerAuthorizationKey:  hdrAuthorizationKey,
 		jsonEscapeHTML:          true,
 		httpClient:              hc,
 		debugBodyLimit:          math.MaxInt32,

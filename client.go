@@ -9,13 +9,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"io"
 	"maps"
 	"net/http"
 	"net/url"
-	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -60,7 +58,6 @@ var (
 	hdrContentLengthKey   = http.CanonicalHeaderKey("Content-Length")
 	hdrContentEncodingKey = http.CanonicalHeaderKey("Content-Encoding")
 	hdrContentDisposition = http.CanonicalHeaderKey("Content-Disposition")
-	hdrAuthorizationKey   = http.CanonicalHeaderKey("Authorization")
 	hdrWwwAuthenticateKey = http.CanonicalHeaderKey("WWW-Authenticate")
 	hdrRetryAfterKey      = http.CanonicalHeaderKey("Retry-After")
 	hdrCookieKey          = http.CanonicalHeaderKey("Cookie")
@@ -178,7 +175,6 @@ type Client struct {
 	allowMethodGetPayload    bool
 	allowMethodDeletePayload bool
 	timeout                  time.Duration
-	headerAuthorizationKey   string
 	responseBodyLimit        int64
 	resBodyUnlimitedReads    bool
 	jsonEscapeHTML           bool
@@ -1144,168 +1140,6 @@ func (c *Client) RemoveProxy() *Client {
 	c.proxyURL = nil
 	transport.Proxy = nil
 	return c
-}
-
-// SetCertificateFromFile method helps to set client certificates into Resty
-// from cert and key files to perform SSL client authentication
-//
-//	client.SetCertificateFromFile("certs/client.pem", "certs/client.key")
-func (c *Client) SetCertificateFromFile(certFilePath, certKeyFilePath string) *Client {
-	cert, err := tls.LoadX509KeyPair(certFilePath, certKeyFilePath)
-	if err != nil {
-		c.Logger().Errorf("client certificate/key parsing error: %v", err)
-		return c
-	}
-	c.SetCertificates(cert)
-	return c
-}
-
-// SetCertificateFromString method helps to set client certificates into Resty
-// from string to perform SSL client authentication
-//
-//	myClientCertStr := `-----BEGIN CERTIFICATE-----
-//	... cert content ...
-//	-----END CERTIFICATE-----`
-//
-//	myClientCertKeyStr := `-----BEGIN PRIVATE KEY-----
-//	... cert key content ...
-//	-----END PRIVATE KEY-----`
-//
-//	client.SetCertificateFromString(myClientCertStr, myClientCertKeyStr)
-func (c *Client) SetCertificateFromString(certStr, certKeyStr string) *Client {
-	cert, err := tls.X509KeyPair([]byte(certStr), []byte(certKeyStr))
-	if err != nil {
-		c.Logger().Errorf("client certificate/key parsing error: %v", err)
-		return c
-	}
-	c.SetCertificates(cert)
-	return c
-}
-
-// SetCertificates method helps to conveniently set a slice of client certificates
-// into Resty to perform SSL client authentication
-//
-//	cert, err := tls.LoadX509KeyPair("certs/client.pem", "certs/client.key")
-//	if err != nil {
-//		log.Printf("ERROR client certificate/key parsing error: %v", err)
-//		return
-//	}
-//
-//	client.SetCertificates(cert)
-func (c *Client) SetCertificates(certs ...tls.Certificate) *Client {
-	config, err := c.tlsConfig()
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-		return c
-	}
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	config.Certificates = append(config.Certificates, certs...)
-	return c
-}
-
-// SetRootCertificates method helps to add one or more root certificate files
-// into the Resty client
-//
-//	// one pem file path
-//	client.SetRootCertificates("/path/to/root/pemFile.pem")
-//
-//	// one or more pem file path(s)
-//	client.SetRootCertificates(
-//	    "/path/to/root/pemFile1.pem",
-//	    "/path/to/root/pemFile2.pem"
-//	    "/path/to/root/pemFile3.pem"
-//	)
-//
-//	// if you happen to have string slices
-//	client.SetRootCertificates(certs...)
-func (c *Client) SetRootCertificates(pemFilePaths ...string) *Client {
-	for _, fp := range pemFilePaths {
-		rootPemData, err := os.ReadFile(fp)
-		if err != nil {
-			c.Logger().Errorf("%v", err)
-			return c
-		}
-		c.handleCAs("root", rootPemData)
-	}
-	return c
-}
-
-// SetRootCertificateFromString method helps to add root certificate from the string
-// into the Resty client
-//
-//	myRootCertStr := `-----BEGIN CERTIFICATE-----
-//	... cert content ...
-//	-----END CERTIFICATE-----`
-//
-//	client.SetRootCertificateFromString(myRootCertStr)
-func (c *Client) SetRootCertificateFromString(pemCerts string) *Client {
-	c.handleCAs("root", []byte(pemCerts))
-	return c
-}
-
-// SetClientRootCertificates method helps to add one or more client root
-// certificate files into the Resty client
-//
-//	// one pem file path
-//	client.SetClientRootCertificates("/path/to/client-root/pemFile.pem")
-//
-//	// one or more pem file path(s)
-//	client.SetClientRootCertificates(
-//	    "/path/to/client-root/pemFile1.pem",
-//	    "/path/to/client-root/pemFile2.pem"
-//	    "/path/to/client-root/pemFile3.pem"
-//	)
-//
-//	// if you happen to have string slices
-//	client.SetClientRootCertificates(certs...)
-func (c *Client) SetClientRootCertificates(pemFilePaths ...string) *Client {
-	for _, fp := range pemFilePaths {
-		pemData, err := os.ReadFile(fp)
-		if err != nil {
-			c.Logger().Errorf("%v", err)
-			return c
-		}
-		c.handleCAs("client-root", pemData)
-	}
-	return c
-}
-
-// SetClientRootCertificateFromString method helps to add a client root certificate
-// from the string into the Resty client
-//
-//	myClientRootCertStr := `-----BEGIN CERTIFICATE-----
-//	... cert content ...
-//	-----END CERTIFICATE-----`
-//
-//	client.SetClientRootCertificateFromString(myClientRootCertStr)
-func (c *Client) SetClientRootCertificateFromString(pemCerts string) *Client {
-	c.handleCAs("client-root", []byte(pemCerts))
-	return c
-}
-
-func (c *Client) handleCAs(scope string, permCerts []byte) {
-	config, err := c.tlsConfig()
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-		return
-	}
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	switch scope {
-	case "root":
-		if config.RootCAs == nil {
-			config.RootCAs = x509.NewCertPool()
-		}
-		config.RootCAs.AppendCertsFromPEM(permCerts)
-	case "client-root":
-		if config.ClientCAs == nil {
-			config.ClientCAs = x509.NewCertPool()
-		}
-		config.ClientCAs.AppendCertsFromPEM(permCerts)
-	}
 }
 
 // OutputDirectory method returns the output directory value from the client.

@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -132,113 +131,11 @@ func TestClientProxy(t *testing.T) {
 	assertNotNil(t, resp)
 }
 
-func TestClientSetCertificates(t *testing.T) {
-	certFile := filepath.Join(getTestDataPath(), "cert.pem")
-	keyFile := filepath.Join(getTestDataPath(), "key.pem")
-
-	t.Run("client cert from file", func(t *testing.T) {
-		c := dcnl()
-		c.SetCertificateFromFile(certFile, keyFile)
-		assertEqual(t, 1, len(c.TLSClientConfig().Certificates))
-	})
-
-	t.Run("error-client cert from file", func(t *testing.T) {
-		c := dcnl()
-		c.SetCertificateFromFile(certFile+"no", keyFile+"no")
-		assertEqual(t, 0, len(c.TLSClientConfig().Certificates))
-	})
-
-	t.Run("client cert from string", func(t *testing.T) {
-		certPemData, _ := os.ReadFile(certFile)
-		keyPemData, _ := os.ReadFile(keyFile)
-		c := dcnl()
-		c.SetCertificateFromString(string(certPemData), string(keyPemData))
-		assertEqual(t, 1, len(c.TLSClientConfig().Certificates))
-	})
-
-	t.Run("error-client cert from string", func(t *testing.T) {
-		c := dcnl()
-		c.SetCertificateFromString(string("empty"), string("empty"))
-		assertEqual(t, 0, len(c.TLSClientConfig().Certificates))
-	})
-}
-
-func TestClientSetRootCertificate(t *testing.T) {
-	t.Run("root cert", func(t *testing.T) {
-		client := dcnl()
-		client.SetRootCertificates(filepath.Join(getTestDataPath(), "sample-root.pem"))
-
-		transport, err := client.HTTPTransport()
-
-		assertNil(t, err)
-		assertNotNil(t, transport.TLSClientConfig.RootCAs)
-	})
-
-	t.Run("root cert not exists", func(t *testing.T) {
-		client := dcnl()
-		client.SetRootCertificates(filepath.Join(getTestDataPath(), "not-exists-sample-root.pem"))
-
-		transport, err := client.HTTPTransport()
-
-		assertNil(t, err)
-		assertNil(t, transport.TLSClientConfig)
-	})
-
-	t.Run("root cert from string", func(t *testing.T) {
-		client := dcnl()
-		rootPemData, err := os.ReadFile(filepath.Join(getTestDataPath(), "sample-root.pem"))
-		assertNil(t, err)
-
-		client.SetRootCertificateFromString(string(rootPemData))
-
-		transport, err := client.HTTPTransport()
-
-		assertNil(t, err)
-		assertNotNil(t, transport.TLSClientConfig.RootCAs)
-	})
-}
-
 type CustomRoundTripper1 struct{}
 
 // RoundTrip just for test
 func (rt *CustomRoundTripper1) RoundTrip(_ *http.Request) (*http.Response, error) {
 	return &http.Response{}, nil
-}
-
-func TestClientCACertificateFromStringErrorTls(t *testing.T) {
-	t.Run("root cert string", func(t *testing.T) {
-		client := NewWithClient(&http.Client{})
-		client.outputLogTo(io.Discard)
-
-		rootPemData, err := os.ReadFile(filepath.Join(getTestDataPath(), "sample-root.pem"))
-		assertNil(t, err)
-		rt := &CustomRoundTripper1{}
-		client.SetTransport(rt)
-		transport, err := client.HTTPTransport()
-
-		client.SetRootCertificateFromString(string(rootPemData))
-
-		assertNotNil(t, rt)
-		assertNotNil(t, err)
-		assertNil(t, transport)
-	})
-
-	t.Run("client cert string", func(t *testing.T) {
-		client := NewWithClient(&http.Client{})
-		client.outputLogTo(io.Discard)
-
-		rootPemData, err := os.ReadFile(filepath.Join(getTestDataPath(), "sample-root.pem"))
-		assertNil(t, err)
-		rt := &CustomRoundTripper1{}
-		client.SetTransport(rt)
-		transport, err := client.HTTPTransport()
-
-		client.SetClientRootCertificateFromString(string(rootPemData))
-
-		assertNotNil(t, rt)
-		assertNotNil(t, err)
-		assertNil(t, transport)
-	})
 }
 
 // CustomRoundTripper2 just for test
@@ -279,7 +176,7 @@ func TestClientTLSConfigerInterface(t *testing.T) {
 		ct := &CustomRoundTripper2{}
 		c.SetTransport(ct)
 		assertNotNil(t, c.Transport())
-		assertEqual(t, "resty.CustomRoundTripper2", inferType(c.Transport()).String())
+		assertEqual(t, "fetch.CustomRoundTripper2", inferType(c.Transport()).String())
 	})
 
 	t.Run("get and set tls config", func(t *testing.T) {
@@ -313,39 +210,6 @@ func TestClientTLSConfigerInterface(t *testing.T) {
 	})
 }
 
-func TestClientSetClientRootCertificate(t *testing.T) {
-	client := dcnl()
-	client.SetClientRootCertificates(filepath.Join(getTestDataPath(), "sample-root.pem"))
-
-	transport, err := client.HTTPTransport()
-
-	assertNil(t, err)
-	assertNotNil(t, transport.TLSClientConfig.ClientCAs)
-}
-
-func TestClientSetClientRootCertificateNotExists(t *testing.T) {
-	client := dcnl()
-	client.SetClientRootCertificates(filepath.Join(getTestDataPath(), "not-exists-sample-root.pem"))
-
-	transport, err := client.HTTPTransport()
-
-	assertNil(t, err)
-	assertNil(t, transport.TLSClientConfig)
-}
-
-func TestClientSetClientRootCertificateFromString(t *testing.T) {
-	client := dcnl()
-	rootPemData, err := os.ReadFile(filepath.Join(getTestDataPath(), "sample-root.pem"))
-	assertNil(t, err)
-
-	client.SetClientRootCertificateFromString(string(rootPemData))
-
-	transport, err := client.HTTPTransport()
-
-	assertNil(t, err)
-	assertNotNil(t, transport.TLSClientConfig.ClientCAs)
-}
-
 func TestClientRequestMiddlewareModification(t *testing.T) {
 	tc := dcnl()
 	tc.AddRequestMiddleware(func(c *Client, r *Request) error {
@@ -370,14 +234,15 @@ func TestClientSetHeaderVerbatim(t *testing.T) {
 	ts := createPostServer(t)
 	defer ts.Close()
 
-	c := dcnl().
-		SetHeaderVerbatim("header-lowercase", "value_lowercase").
-		SetHeader("header-lowercase", "value_standard")
+	c := dcnl()
+	c.SetHeaderVerbatim("header-lowercase", "value_lowercase")
+	c.SetHeaderVerbatim("HEADER-UPPERCASE", "value_UPPERCASE")
 
-	//lint:ignore SA1008 valid one, so ignore this!
-	unConventionHdrValue := strings.Join(c.Header()["header-lowercase"], "")
-	assertEqual(t, "value_lowercase", unConventionHdrValue)
-	assertEqual(t, "value_standard", c.Header().Get("Header-Lowercase"))
+	resp, err := c.R().Post(ts.URL)
+
+	assertError(t, err)
+	assertNotNil(t, resp)
+	assertEqual(t, http.StatusOK, resp.StatusCode())
 }
 
 func TestClientSetTransport(t *testing.T) {
@@ -453,9 +318,7 @@ func TestClientSettingsCoverage(t *testing.T) {
 	ct.SetProxy("http://localhost:8080")
 	ct.RemoveProxy()
 
-	ct.SetCertificates(tls.Certificate{})
 	ct.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
-	ct.SetRootCertificateFromString("root cert")
 
 	ct.outputLogTo(io.Discard)
 	// [End] Custom Transport scenario

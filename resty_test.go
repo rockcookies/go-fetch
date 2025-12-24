@@ -168,7 +168,7 @@ func createGetServer(t *testing.T) *httptest.Server {
 
 func handleLoginEndpoint(t *testing.T, w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/login" {
-		user := &credentials{}
+		user := &testUser{}
 
 		// JSON
 		if isJSONContentType(r.Header.Get(hdrContentTypeKey)) {
@@ -814,7 +814,7 @@ func createDigestServer(t *testing.T, conf *digestServerConfig) *httptest.Server
 }
 
 func authorizationHeaderValid(t *testing.T, r *http.Request, conf *digestServerConfig) bool {
-	input := r.Header.Get(hdrAuthorizationKey)
+	input := r.Header.Get("Authorization")
 	if input == "" {
 		return false
 	}

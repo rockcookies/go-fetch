@@ -55,9 +55,7 @@ type Request struct {
 	AllowMethodDeletePayload   bool
 	IsDone                     bool
 	Timeout                    time.Duration
-	HeaderAuthorizationKey     string
 
-	credentials         *credentials
 	isMultiPart         bool
 	isFormData          bool
 	setContentLength    bool
@@ -1143,7 +1141,15 @@ func (r *Request) Execute(method, url string) (res *Response, err error) {
 
 	r.Method = method
 	r.URL = url
+
+	isInvalidRequestErr := false
 	res, err = r.client.execute(r)
+	if err != nil {
+		if irErr, ok := err.(*invalidRequestError); ok {
+			err = irErr.Err
+			isInvalidRequestErr = true
+		}
+	}
 
 	if r.isMultiPart {
 		for _, mf := range r.multipartFields {
@@ -1152,7 +1158,13 @@ func (r *Request) Execute(method, url string) (res *Response, err error) {
 	}
 
 	r.IsDone = true
-	r.client.onErrorHooks(r, res, err)
+
+	// Hooks
+	if isInvalidRequestErr {
+		r.client.onInvalidHooks(r, err)
+	} else {
+		r.client.onErrorHooks(r, res, err)
+	}
 
 	backToBufPool(r.bodyBuf)
 	return
