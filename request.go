@@ -826,8 +826,6 @@ func (r *Request) DisableDebug() *Request {
 // the details current request and response.
 //
 //	client.R().SetDebug(true)
-//	// OR
-//	client.R().EnableDebug()
 //
 // Also, it can be enabled at the request level for a particular request; see [Request.SetDebug].
 //   - For [Request], it logs information such as HTTP verb, Relative URL path,
@@ -843,17 +841,16 @@ func (r *Request) SetDebug(d bool) *Request {
 // HTTP request tracing
 //_______________________________________________________________________
 
-// EnableTrace method enables trace for the current request
+// SetTrace method enables trace for the current request
 // using [httptrace.ClientTrace] and provides insights.
 //
 //	client := resty.New()
 //
-//	resp, err := client.R().EnableTrace().Get("https://httpbin.org/get")
+//	resp, err := client.R().SetTrace(true).Get("https://httpbin.org/get")
 //	fmt.Println("Error:", err)
 //	fmt.Println("Trace Info:", resp.Request.TraceInfo())
 //
-// See [Client.EnableTrace], [Client.SetTrace] are also available to
-// get trace info for all requests.
+// See [Client.SetTrace] are also available to get trace info for all requests.
 func (r *Request) EnableTrace() *Request {
 	r.SetTrace(true)
 	return r

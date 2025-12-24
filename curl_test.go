@@ -48,7 +48,7 @@ func TestCurlGenerateExecutedRequest(t *testing.T) {
 	data := map[string]string{
 		"name": "Resty",
 	}
-	c := dcnl().EnableDebug()
+	c := dcnl().SetDebug(true)
 	req := c.R().
 		SetBody(data).
 		SetCookies(
@@ -217,7 +217,7 @@ func TestCurl_buildCurlCmd(t *testing.T) {
 
 func TestCurlRequestGetBodyError(t *testing.T) {
 	c := dcnl().
-		EnableDebug().
+		SetDebug(true).
 		SetRequestMiddlewares(
 			PrepareRequestMiddleware,
 			func(_ *Client, r *Request) error {
@@ -255,7 +255,7 @@ func TestCurlRequestGetBodyError(t *testing.T) {
 
 func TestCurlRequestMiddlewaresError(t *testing.T) {
 	errMsg := "middleware error"
-	c := dcnl().EnableDebug().
+	c := dcnl().SetDebug(true).
 		SetRequestMiddlewares(
 			func(c *Client, r *Request) error {
 				return errors.New(errMsg)

@@ -1479,7 +1479,7 @@ func TestRawPathParamURLInput(t *testing.T) {
 	assertEqual(t, "sample@sample.com", c.PathParams()["userId"])
 	assertEqual(t, "users/developers", c.PathParams()["path"])
 
-	resp, err := c.R().EnableDebug().
+	resp, err := c.R().SetDebug(true).
 		SetRawPathParams(map[string]string{
 			"subAccountId": "100002",
 			"website":      "https://example.com",
@@ -1503,7 +1503,7 @@ func TestTraceInfo(t *testing.T) {
 	client := dcnl()
 
 	t.Run("enable trace on client", func(t *testing.T) {
-		client.SetBaseURL(ts.URL).EnableTrace()
+		client.SetBaseURL(ts.URL).SetTrace(true)
 		for _, u := range []string{"/", "/json", "/long-text", "/long-json"} {
 			resp, err := client.R().Get(u)
 			assertNil(t, err)
@@ -1523,12 +1523,12 @@ func TestTraceInfo(t *testing.T) {
 			assertNotNil(t, tr.Clone())
 		}
 
-		client.DisableTrace()
+		client.SetTrace(false)
 	})
 
 	t.Run("enable trace on request", func(t *testing.T) {
 		for _, u := range []string{"/", "/json", "/long-text", "/long-json"} {
-			resp, err := client.R().EnableTrace().Get(u)
+			resp, err := client.R().SetTrace(true).Get(u)
 			assertNil(t, err)
 			assertNotNil(t, resp)
 
@@ -1545,7 +1545,7 @@ func TestTraceInfo(t *testing.T) {
 	})
 
 	t.Run("enable trace on invalid request, issue #1016", func(t *testing.T) {
-		resp, err := client.R().EnableTrace().Get("unknown://url.com")
+		resp, err := client.R().SetTrace(true).Get("unknown://url.com")
 		assertNotNil(t, err)
 		tr := resp.Request.TraceInfo()
 		assertEqual(t, true, tr.DNSLookup == 0)
@@ -1562,7 +1562,7 @@ func TestTraceInfo(t *testing.T) {
 
 		requestURLs := []string{"/", "/json", "/long-text", "/long-json"}
 		for _, u := range requestURLs {
-			resp, err := c.R().EnableTrace().EnableDebug().Get(u)
+			resp, err := c.R().SetTrace(true).SetDebug(true).Get(u)
 			assertNil(t, err)
 			assertNotNil(t, resp)
 
@@ -1583,7 +1583,7 @@ func TestTraceInfo(t *testing.T) {
 
 		requestURLs := []string{"/", "/json", "/long-text", "/long-json"}
 		for _, u := range requestURLs {
-			resp, err := c.R().EnableTrace().EnableDebug().Get(u)
+			resp, err := c.R().SetTrace(true).SetDebug(true).Get(u)
 			assertNil(t, err)
 			assertNotNil(t, resp)
 		}
@@ -1624,7 +1624,7 @@ func TestTraceInfoOnTimeout(t *testing.T) {
 		DialerTimeout: 100 * time.Millisecond,
 	}).
 		SetBaseURL("http://resty-nowhere.local").
-		EnableTrace()
+		SetTrace(true)
 
 	resp, err := client.R().Get("/")
 	assertNotNil(t, err)
@@ -1646,7 +1646,7 @@ func TestTraceInfoOnTimeoutWithSetTimeout(t *testing.T) {
 		client := New().
 			SetTimeout(1 * time.Millisecond).
 			SetBaseURL("http://resty-nowhere.local").
-			EnableTrace()
+			SetTrace(true)
 
 		resp, err := client.R().Get("/")
 		assertNotNil(t, err)
@@ -1671,7 +1671,7 @@ func TestTraceInfoOnTimeoutWithSetTimeout(t *testing.T) {
 		client := New().
 			SetTimeout(5 * time.Second).
 			SetBaseURL(ts.URL).
-			EnableTrace()
+			SetTrace(true)
 
 		resp, err := client.R().Get("/")
 		assertNil(t, err)
@@ -1699,7 +1699,7 @@ func TestTraceInfoOnTimeoutWithSetTimeout(t *testing.T) {
 		client := New().
 			SetTimeout(5 * time.Second).
 			SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}).
-			EnableTrace()
+			SetTrace(true)
 
 		resp, err := client.R().Get(ts.URL)
 		assertNil(t, err)
@@ -2124,9 +2124,9 @@ func TestRequestSettingsCoverage(t *testing.T) {
 
 	r2 := c.R()
 	assertEqual(t, false, r2.IsTrace)
-	r2.EnableTrace()
+	r2.SetTrace(true)
 	assertEqual(t, true, r2.IsTrace)
-	r2.DisableTrace()
+	r2.SetTrace(false)
 	assertEqual(t, false, r2.IsTrace)
 
 	r3 := c.R()
@@ -2138,9 +2138,9 @@ func TestRequestSettingsCoverage(t *testing.T) {
 
 	r4 := c.R()
 	assertEqual(t, false, r4.Debug)
-	r4.EnableDebug()
+	r4.SetDebug(true)
 	assertEqual(t, true, r4.Debug)
-	r4.DisableDebug()
+	r4.SetDebug(false)
 	assertEqual(t, false, r4.Debug)
 
 	// Removed: r5 IsRetryDefaultConditions, DisableRetryDefaultConditions, EnableRetryDefaultConditions - retry functionality removed

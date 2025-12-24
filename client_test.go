@@ -298,7 +298,7 @@ func TestClientSettingsCoverage(t *testing.T) {
 
 	c.SetCloseConnection(true)
 
-	c.DisableDebug()
+	c.SetDebug(false)
 
 	nr := nopReader{}
 	n, err1 := nr.Read(nil)

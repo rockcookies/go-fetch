@@ -58,7 +58,6 @@ var (
 	hdrContentLengthKey   = http.CanonicalHeaderKey("Content-Length")
 	hdrContentEncodingKey = http.CanonicalHeaderKey("Content-Encoding")
 	hdrContentDisposition = http.CanonicalHeaderKey("Content-Disposition")
-	hdrWwwAuthenticateKey = http.CanonicalHeaderKey("WWW-Authenticate")
 	hdrRetryAfterKey      = http.CanonicalHeaderKey("Retry-After")
 	hdrCookieKey          = http.CanonicalHeaderKey("Cookie")
 
@@ -68,8 +67,6 @@ var (
 
 	jsonKey = "json"
 	xmlKey  = "xml"
-
-	defaultAuthScheme = "Bearer"
 
 	hdrUserAgentValue = "go-resty/" + Version + " (https://resty.dev)"
 	bufPool           = &sync.Pool{New: func() any { return &bytes.Buffer{} }}
@@ -789,24 +786,10 @@ func (c *Client) IsDebug() bool {
 	return c.debug
 }
 
-// EnableDebug method is a helper method for [Client.SetDebug]
-func (c *Client) EnableDebug() *Client {
-	c.SetDebug(true)
-	return c
-}
-
-// DisableDebug method is a helper method for [Client.SetDebug]
-func (c *Client) DisableDebug() *Client {
-	c.SetDebug(false)
-	return c
-}
-
 // SetDebug method enables the debug mode on the Resty client. The client logs details
 // of every request and response.
 //
 //	client.SetDebug(true)
-//	// OR
-//	client.EnableDebug()
 //
 // Also, it can be enabled at the request level for a particular request; see [Request.SetDebug].
 //   - For [Request], it logs information such as HTTP verb, Relative URL path,
@@ -1392,26 +1375,16 @@ func (c *Client) SetResponseBodyLimit(v int64) *Client {
 	return c
 }
 
-// EnableTrace method enables the Resty client trace for the requests fired from
+// SetTrace method enables the Resty client trace for the requests fired from
 // the client using [httptrace.ClientTrace] and provides insights.
 //
-//	client := resty.New().EnableTrace()
+//	client := resty.New().SetTrace(true)
 //
 //	resp, err := client.R().Get("https://httpbin.org/get")
 //	fmt.Println("error:", err)
 //	fmt.Println("Trace Info:", resp.Request.TraceInfo())
 //
 // The method [Request.EnableTrace] is also available to get trace info for a single request.
-func (c *Client) EnableTrace() *Client {
-	c.SetTrace(true)
-	return c
-}
-
-// DisableTrace method disables the Resty client trace. Refer to [Client.EnableTrace].
-func (c *Client) DisableTrace() *Client {
-	c.SetTrace(false)
-	return c
-}
 
 // IsTrace method returns true if the trace is enabled on the client instance; otherwise, it returns false.
 func (c *Client) IsTrace() bool {
