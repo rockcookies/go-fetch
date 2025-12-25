@@ -50,14 +50,12 @@ var (
 	ErrNotHttpTransportType       = errors.New("resty: not a http.Transport type")
 	ErrUnsupportedRequestBodyKind = errors.New("resty: unsupported request body kind")
 
-	hdrUserAgentKey       = http.CanonicalHeaderKey("User-Agent")
 	hdrAcceptKey          = http.CanonicalHeaderKey("Accept")
 	hdrAcceptEncodingKey  = http.CanonicalHeaderKey("Accept-Encoding")
 	hdrContentTypeKey     = http.CanonicalHeaderKey("Content-Type")
 	hdrContentLengthKey   = http.CanonicalHeaderKey("Content-Length")
 	hdrContentEncodingKey = http.CanonicalHeaderKey("Content-Encoding")
 	hdrContentDisposition = http.CanonicalHeaderKey("Content-Disposition")
-	hdrRetryAfterKey      = http.CanonicalHeaderKey("Retry-After")
 	hdrCookieKey          = http.CanonicalHeaderKey("Cookie")
 
 	plainTextType   = "text/plain; charset=utf-8"
@@ -67,8 +65,7 @@ var (
 	jsonKey = "json"
 	xmlKey  = "xml"
 
-	hdrUserAgentValue = "go-resty/" + Version + " (https://resty.dev)"
-	bufPool           = &sync.Pool{New: func() any { return &bytes.Buffer{} }}
+	bufPool = &sync.Pool{New: func() any { return &bytes.Buffer{} }}
 )
 
 type (

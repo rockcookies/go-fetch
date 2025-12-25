@@ -134,7 +134,7 @@ func createGetServer(t *testing.T) *httptest.Server {
 			case "/retry-after-delay":
 				w.Header().Set(hdrContentTypeKey, "application/json; charset=utf-8")
 				if atomic.LoadInt32(&attempt) == 0 {
-					w.Header().Set(hdrRetryAfterKey, "1")
+					w.Header().Set("Retry-After", "1")
 					w.WriteHeader(http.StatusTooManyRequests)
 					_, _ = w.Write([]byte(`{ "message": "too many" }`))
 				} else {

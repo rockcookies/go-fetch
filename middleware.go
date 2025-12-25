@@ -168,10 +168,6 @@ func parseRequestHeader(c *Client, r *Request) error {
 		r.Header[k] = v[:]
 	}
 
-	if !r.isHeaderExists(hdrUserAgentKey) {
-		r.Header.Set(hdrUserAgentKey, hdrUserAgentValue)
-	}
-
 	if !r.isHeaderExists(hdrAcceptEncodingKey) {
 		r.Header.Set(hdrAcceptEncodingKey, r.client.ContentDecompressorKeys())
 	}

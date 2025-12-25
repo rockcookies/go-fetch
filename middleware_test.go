@@ -365,7 +365,6 @@ func Test_parseRequestHeader(t *testing.T) {
 			expectedHeader: http.Header{
 				http.CanonicalHeaderKey("foo"): []string{"1"},
 				http.CanonicalHeaderKey("bar"): []string{"2"},
-				hdrUserAgentKey:                []string{hdrUserAgentValue},
 			},
 		},
 		{
@@ -379,7 +378,6 @@ func Test_parseRequestHeader(t *testing.T) {
 			expectedHeader: http.Header{
 				http.CanonicalHeaderKey("foo"): []string{"1"},
 				http.CanonicalHeaderKey("bar"): []string{"2"},
-				hdrUserAgentKey:                []string{hdrUserAgentValue},
 			},
 		},
 		{
@@ -398,23 +396,20 @@ func Test_parseRequestHeader(t *testing.T) {
 				http.CanonicalHeaderKey("foo"): []string{"3"},
 				http.CanonicalHeaderKey("bar"): []string{"2"},
 				http.CanonicalHeaderKey("xyz"): []string{"4"},
-				hdrUserAgentKey:                []string{hdrUserAgentValue},
 			},
 		},
 		{
 			name: "no headers",
-			init: func(c *Client, r *Request) {},
-			expectedHeader: http.Header{
-				hdrUserAgentKey: []string{hdrUserAgentValue},
-			},
+			init:           func(c *Client, r *Request) {},
+			expectedHeader: http.Header{},
 		},
 		{
 			name: "user agent",
 			init: func(c *Client, r *Request) {
-				c.SetHeader(hdrUserAgentKey, "foo bar")
+				c.SetHeader("User-Agent", "foo bar")
 			},
 			expectedHeader: http.Header{
-				http.CanonicalHeaderKey(hdrUserAgentKey): []string{"foo bar"},
+				"User-Agent": []string{"foo bar"},
 			},
 		},
 		{
@@ -424,7 +419,6 @@ func Test_parseRequestHeader(t *testing.T) {
 			},
 			expectedHeader: http.Header{
 				hdrContentTypeKey: []string{"application/json"},
-				hdrUserAgentKey:   []string{hdrUserAgentValue},
 			},
 		},
 	} {

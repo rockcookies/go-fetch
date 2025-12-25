@@ -83,7 +83,7 @@ func TestGetCustomUserAgent(t *testing.T) {
 	defer ts.Close()
 
 	resp, err := dcnlr().
-		SetHeader(hdrUserAgentKey, "Test Custom User agent").
+		SetHeader("User-Agent", "Test Custom User agent").
 		SetQueryParam("request_no", strconv.FormatInt(time.Now().Unix(), 10)).
 		Get(ts.URL + "/")
 
@@ -109,7 +109,7 @@ func TestGetClientParamRequestParam(t *testing.T) {
 	resp, err := c.R().
 		SetQueryParams(map[string]string{"req_1": "req 1 value", "req_2": "req 2 value"}).
 		SetQueryParam("request_no", strconv.FormatInt(time.Now().Unix(), 10)).
-		SetHeader(hdrUserAgentKey, "Test Custom User agent").
+		SetHeader("User-Agent", "Test Custom User agent").
 		Get(ts.URL + "/")
 
 	assertError(t, err)
@@ -156,7 +156,7 @@ func TestPostJSONStringSuccess(t *testing.T) {
 
 	c := dcnl()
 	c.SetHeader(hdrContentTypeKey, "application/json; charset=utf-8").
-		SetHeaders(map[string]string{hdrUserAgentKey: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) go-resty v0.1", hdrAcceptKey: "application/json; charset=utf-8"})
+		SetHeaders(map[string]string{"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) go-resty v0.1", hdrAcceptKey: "application/json; charset=utf-8"})
 
 	resp, err := c.R().
 		SetBody(`{"username":"testuser", "password":"testpass"}`).
@@ -184,7 +184,7 @@ func TestPostJSONBytesSuccess(t *testing.T) {
 
 	c := dcnl()
 	c.SetHeader(hdrContentTypeKey, "application/json; charset=utf-8").
-		SetHeaders(map[string]string{hdrUserAgentKey: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) go-resty v0.7", hdrAcceptKey: "application/json; charset=utf-8"})
+		SetHeaders(map[string]string{"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) go-resty v0.7", hdrAcceptKey: "application/json; charset=utf-8"})
 
 	resp, err := c.R().
 		SetBody([]byte(`{"username":"testuser", "password":"testpass"}`)).
@@ -2089,12 +2089,12 @@ func TestRequestFuncs(t *testing.T) {
 
 	addRequestHeaders := func(r *Request) *Request {
 		return r.SetHeader(hdrAcceptKey, "application/json").
-			SetHeader(hdrUserAgentKey, "my-client/v1.0")
+			SetHeader("User-Agent", "my-client/v1.0")
 	}
 
 	resp, err := c.R().
 		Funcs(addRequestQueryParams(1, 100), addRequestHeaders).
-		SetHeader(hdrUserAgentKey, "Test Custom User agent").
+		SetHeader("User-Agent", "Test Custom User agent").
 		Get(ts.URL + "/")
 
 	assertError(t, err)

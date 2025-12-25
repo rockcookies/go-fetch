@@ -14,9 +14,6 @@ import (
 	"sync"
 )
 
-// Version # of resty
-const Version = "3.0.0-beta.5"
-
 // New method creates a new Resty client.
 func New() *Client {
 	return NewWithTransport(nil)
