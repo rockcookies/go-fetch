@@ -14,3 +14,5 @@
 {"timestamp":"2025-12-25T03:04:00.000Z","event":"Plan Created: simplify-comments","file":"docs/specs/2025-12-25-simplify-comments/plan.md","notes":"21 tasks - remove copyright headers and simplify comments across all Go files"}
 {"timestamp":"2025-12-25T04:28:52.000Z","event":"Design Created: remove-proxy","file":"docs/specs/2025-12-25-remove-proxy/design.md","notes":"Remove Proxy management and HTTPTransport - ~50-70 lines"}
 {"timestamp":"2025-12-25T04:30:47.000Z","event":"Plan Created: remove-proxy","file":"docs/specs/2025-12-25-remove-proxy/plan.md","notes":"16 tasks - remove Proxy management and HTTPTransport"}
+{"timestamp":"2025-12-25T06:32:00.000Z","event":"Design Created: simplify-url-params","file":"docs/specs/2025-12-25-simplify-url-params/design.md","notes":"Simplify PathParams replacement and remove unescapeQueryParams - ~50-60 lines"}
+{"timestamp":"2025-12-25T06:38:00.000Z","event":"Plan Created: simplify-url-params","file":"docs/specs/2025-12-25-simplify-url-params/plan.md","notes":"10 tasks - simplify PathParams, remove unescapeQueryParams, unify API"}
