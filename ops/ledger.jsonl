@@ -16,3 +16,5 @@
 {"timestamp":"2025-12-25T04:30:47.000Z","event":"Plan Created: remove-proxy","file":"docs/specs/2025-12-25-remove-proxy/plan.md","notes":"16 tasks - remove Proxy management and HTTPTransport"}
 {"timestamp":"2025-12-25T06:32:00.000Z","event":"Design Created: simplify-url-params","file":"docs/specs/2025-12-25-simplify-url-params/design.md","notes":"Simplify PathParams replacement and remove unescapeQueryParams - ~50-60 lines"}
 {"timestamp":"2025-12-25T06:38:00.000Z","event":"Plan Created: simplify-url-params","file":"docs/specs/2025-12-25-simplify-url-params/plan.md","notes":"10 tasks - simplify PathParams, remove unescapeQueryParams, unify API"}
+{"timestamp":"2025-12-25T14:30:45.000Z","event":"Design Created: remove-close-onclose","file":"docs/specs/2025-12-25-remove-close-onclose/design.md","notes":"Remove Client.Close(), OnCloseHook, and related functionality - ~50 lines"}
+{"timestamp":"2025-12-25T14:31:45.000Z","event":"Plan Created: remove-close-onclose","file":"docs/specs/2025-12-25-remove-close-onclose/plan.md","notes":"9 tasks - remove CloseHook type, closeHooks field, OnClose(), Close(), onCloseHooks(), and 2 tests - ~56 lines"}
