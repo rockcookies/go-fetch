@@ -30,13 +30,12 @@ type (
 
 	// DebugLogRequest type used to capture debug info about the [Request].
 	DebugLogRequest struct {
-		Host    string      `json:"host"`
-		URI     string      `json:"uri"`
-		Method  string      `json:"method"`
-		Proto   string      `json:"proto"`
-		Header  http.Header `json:"header"`
-		CurlCmd string      `json:"curl_cmd"`
-		Body    string      `json:"body"`
+		Host   string      `json:"host"`
+		URI    string      `json:"uri"`
+		Method string      `json:"method"`
+		Proto  string      `json:"proto"`
+		Header http.Header `json:"header"`
+		Body   string      `json:"body"`
 	}
 
 	// DebugLogResponse type used to capture debug info about the [Response].
@@ -60,10 +59,6 @@ func DebugLogFormatter(dl *DebugLog) string {
 	debugLog := "\n==============================================================================\n"
 
 	req := dl.Request
-	if len(req.CurlCmd) > 0 {
-		debugLog += "~~~ REQUEST(CURL) ~~~\n" +
-			fmt.Sprintf("	%v\n", req.CurlCmd)
-	}
 	debugLog += "~~~ REQUEST ~~~\n" +
 		fmt.Sprintf("%s  %s  %s\n", req.Method, req.URI, req.Proto) +
 		fmt.Sprintf("HOST   : %s\n", req.Host) +
@@ -160,9 +155,6 @@ func prepareRequestDebugInfo(c *Client, r *Request) {
 		Proto:  rr.Proto,
 		Header: sanitizeHeaders(rh),
 		Body:   r.fmtBodyString(r.DebugBodyLimit),
-	}
-	if r.generateCurlCmd && r.debugLogCurlCmd {
-		rdl.CurlCmd = r.resultCurlCmd
 	}
 
 	r.initValuesMap()

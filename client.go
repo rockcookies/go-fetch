@@ -124,8 +124,6 @@ type Client struct {
 	proxyURL                *url.URL
 	debugLogFormatter       DebugLogFormatterFunc
 	debugLogCallback        DebugLogCallbackFunc
-	generateCurlCmd         bool
-	debugLogCurlCmd         bool
 	unescapeQueryParams     bool
 	beforeRequest           []RequestMiddleware
 	afterResponse           []ResponseMiddleware
@@ -409,8 +407,6 @@ func (c *Client) R() *Request {
 		jsonEscapeHTML:      c.jsonEscapeHTML,
 		log:                 c.log,
 		setContentLength:    c.setContentLength,
-		generateCurlCmd:     c.generateCurlCmd,
-		debugLogCurlCmd:     c.debugLogCurlCmd,
 		unescapeQueryParams: c.unescapeQueryParams,
 	}
 
@@ -1242,61 +1238,6 @@ func (c *Client) SetTrace(t bool) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.isTrace = t
-	return c
-}
-
-// EnableGenerateCurlCmd method enables the generation of curl command at the
-// client instance level.
-//
-// By default, Resty does not log the curl command in the debug log since it has the potential
-// to leak sensitive data unless explicitly enabled via [Client.SetDebugLogCurlCmd] or
-// [Request.SetDebugLogCurlCmd].
-//
-// NOTE: Use with care.
-//   - Potential to leak sensitive data from [Request] and [Response] in the debug log
-//     when the debug log option is enabled.
-//   - Additional memory usage since the request body was reread.
-//   - curl body is not generated for [io.Reader] and multipart request flow.
-func (c *Client) EnableGenerateCurlCmd() *Client {
-	c.SetGenerateCurlCmd(true)
-	return c
-}
-
-// DisableGenerateCurlCmd method disables the option set by [Client.EnableGenerateCurlCmd] or
-// [Client.SetGenerateCurlCmd].
-func (c *Client) DisableGenerateCurlCmd() *Client {
-	c.SetGenerateCurlCmd(false)
-	return c
-}
-
-// SetGenerateCurlCmd method is used to turn on/off the generate curl command at the
-// client instance level.
-//
-// By default, Resty does not log the curl command in the debug log since it has the potential
-// to leak sensitive data unless explicitly enabled via [Client.SetDebugLogCurlCmd] or
-// [Request.SetDebugLogCurlCmd].
-//
-// NOTE: Use with care.
-//   - Potential to leak sensitive data from [Request] and [Response] in the debug log
-//     when the debug log option is enabled.
-//   - Additional memory usage since the request body was reread.
-//   - curl body is not generated for [io.Reader] and multipart request flow.
-//
-// It can be overridden at the request level; see [Request.SetGenerateCurlCmd]
-func (c *Client) SetGenerateCurlCmd(b bool) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.generateCurlCmd = b
-	return c
-}
-
-// SetDebugLogCurlCmd method enables the curl command to be logged in the debug log.
-//
-// It can be overridden at the request level; see [Request.SetDebugLogCurlCmd]
-func (c *Client) SetDebugLogCurlCmd(b bool) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.debugLogCurlCmd = b
 	return c
 }
 

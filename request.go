@@ -68,9 +68,6 @@ type Request struct {
 	baseURL             string
 	multipartBoundary   string
 	multipartFields     []*MultipartField
-	resultCurlCmd       string
-	generateCurlCmd     bool
-	debugLogCurlCmd     bool
 	unescapeQueryParams bool
 	multipartErrChan    chan error
 }
@@ -837,82 +834,6 @@ func (r *Request) SetDebug(d bool) *Request {
 func (r *Request) SetTrace(t bool) *Request {
 	r.IsTrace = t
 	return r
-}
-
-// EnableGenerateCurlCmd method enables the generation of curl commands for the current request.
-//
-// By default, Resty does not log the curl command in the debug log since it has the potential
-// to leak sensitive data unless explicitly enabled via [Request.SetDebugLogCurlCmd] or
-// [Client.SetDebugLogCurlCmd].
-//
-// It overrides the options set in the [Client].
-//
-// NOTE: Use with care.
-//   - Potential to leak sensitive data from [Request] and [Response] in the debug log
-//     when the debug log option is enabled.
-//   - Additional memory usage since the request body was reread.
-//   - curl body is not generated for [io.Reader] and multipart request flow.
-func (r *Request) EnableGenerateCurlCmd() *Request {
-	r.SetGenerateCurlCmd(true)
-	return r
-}
-
-// DisableGenerateCurlCmd method disables the option set by [Request.EnableGenerateCurlCmd] or
-// [Request.SetGenerateCurlCmd].
-//
-// It overrides the options set in the [Client].
-func (r *Request) DisableGenerateCurlCmd() *Request {
-	r.SetGenerateCurlCmd(false)
-	return r
-}
-
-// SetGenerateCurlCmd method is used to turn on/off the generate curl command for the current request.
-//
-// By default, Resty does not log the curl command in the debug log since it has the potential
-// to leak sensitive data unless explicitly enabled via [Request.SetDebugLogCurlCmd] or
-// [Client.SetDebugLogCurlCmd].
-//
-// It overrides the options set by the [Client.SetGenerateCurlCmd]
-//
-// NOTE: Use with care.
-//   - Potential to leak sensitive data from [Request] and [Response] in the debug log
-//     when the debug log option is enabled.
-//   - Additional memory usage since the request body was reread.
-//   - curl body is not generated for [io.Reader] and multipart request flow.
-func (r *Request) SetGenerateCurlCmd(b bool) *Request {
-	r.generateCurlCmd = b
-	return r
-}
-
-// SetDebugLogCurlCmd method enables the curl command to be logged in the debug log
-// for the current request.
-//
-// It can be overridden at the request level; see [Client.SetDebugLogCurlCmd]
-func (r *Request) SetDebugLogCurlCmd(b bool) *Request {
-	r.debugLogCurlCmd = b
-	return r
-}
-
-// CurlCmd method generates the curl command for the request.
-func (r *Request) CurlCmd() string {
-	return r.generateCurlCommand()
-}
-
-func (r *Request) generateCurlCommand() string {
-	if !r.generateCurlCmd {
-		return ""
-	}
-	if len(r.resultCurlCmd) > 0 {
-		return r.resultCurlCmd
-	}
-	if r.RawRequest == nil {
-		if err := r.client.executeRequestMiddlewares(r); err != nil {
-			r.log.Errorf("%v", err)
-			return ""
-		}
-	}
-	r.resultCurlCmd = buildCurlCmd(r)
-	return r.resultCurlCmd
 }
 
 // SetUnescapeQueryParams method sets the choice of unescape query parameters for the request URL.

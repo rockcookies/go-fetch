@@ -40,8 +40,6 @@ func PrepareRequestMiddleware(c *Client, r *Request) (err error) {
 	// is URL-related, and those get caught up in the `parseRequestURL`
 	createRawRequest(c, r)
 
-	_ = r.generateCurlCommand()
-
 	return nil
 }
 
