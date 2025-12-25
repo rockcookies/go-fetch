@@ -1,8 +1,3 @@
-// Copyright (c) 2015-present Jeevanandam M (jeeva@myjeeva.com), All rights reserved.
-// resty source code and usage is governed by a MIT style
-// license that can be found in the LICENSE file.
-// SPDX-License-Identifier: MIT
-
 package fetch
 
 import (
@@ -12,23 +7,20 @@ import (
 )
 
 type (
-	// DebugLogCallbackFunc function type is for request and response debug log callback purposes.
-	// It gets called before Resty logs it
+	// DebugLogCallbackFunc is called before debug logging.
 	DebugLogCallbackFunc func(*DebugLog)
 
-	// DebugLogFormatterFunc function type is used to implement debug log formatting.
-	// See out of the box [DebugLogStringFormatter], [DebugLogJSONFormatter]
+	// DebugLogFormatterFunc formats debug logs.
 	DebugLogFormatterFunc func(*DebugLog) string
 
-	// DebugLog struct is used to collect details from Resty request and response
-	// for debug logging callback purposes.
+	// DebugLog holds request and response debug information.
 	DebugLog struct {
 		Request   *DebugLogRequest  `json:"request"`
 		Response  *DebugLogResponse `json:"response"`
 		TraceInfo *TraceInfo        `json:"trace_info"`
 	}
 
-	// DebugLogRequest type used to capture debug info about the [Request].
+	// DebugLogRequest holds request debug information.
 	DebugLogRequest struct {
 		Host   string      `json:"host"`
 		URI    string      `json:"uri"`
@@ -38,7 +30,7 @@ type (
 		Body   string      `json:"body"`
 	}
 
-	// DebugLogResponse type used to capture debug info about the [Response].
+	// DebugLogResponse holds response debug information.
 	DebugLogResponse struct {
 		StatusCode int           `json:"status_code"`
 		Status     string        `json:"status"`
@@ -51,10 +43,7 @@ type (
 	}
 )
 
-// DebugLogFormatter function formats the given debug log info in human readable
-// format.
-//
-// This is the default debug log formatter in the Resty.
+// DebugLogFormatter formats debug logs in human-readable format.
 func DebugLogFormatter(dl *DebugLog) string {
 	debugLog := "\n==============================================================================\n"
 

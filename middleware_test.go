@@ -1,8 +1,3 @@
-// Copyright (c) 2015-present Jeevanandam M (jeeva@myjeeva.com), All rights reserved.
-// resty source code and usage is governed by a MIT style
-// license that can be found in the LICENSE file.
-// SPDX-License-Identifier: MIT
-
 package fetch
 
 import (
@@ -399,7 +394,7 @@ func Test_parseRequestHeader(t *testing.T) {
 			},
 		},
 		{
-			name: "no headers",
+			name:           "no headers",
 			init:           func(c *Client, r *Request) {},
 			expectedHeader: http.Header{},
 		},

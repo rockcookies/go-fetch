@@ -1,8 +1,3 @@
-// Copyright (c) 2015-present Jeevanandam M (jeeva@myjeeva.com), All rights reserved.
-// resty source code and usage is governed by a MIT style
-// license that can be found in the LICENSE file.
-// SPDX-License-Identifier: MIT
-
 package fetch
 
 import (
@@ -14,8 +9,7 @@ import (
 	"time"
 )
 
-// TraceInfo struct is used to provide request trace info such as DNS lookup
-// duration, Connection obtain duration, Server processing duration, etc.
+// TraceInfo provides request trace information.
 type TraceInfo struct {
 	// DNSLookup is the duration that transport took to perform
 	// DNS lookup.
@@ -60,7 +54,7 @@ type TraceInfo struct {
 	RemoteAddr string `json:"remote_address"`
 }
 
-// String method returns string representation of request trace information.
+// String returns string representation of trace information.
 func (ti TraceInfo) String() string {
 	return fmt.Sprintf(`TRACE INFO:
   DNSLookupTime : %v
@@ -80,12 +74,12 @@ func (ti TraceInfo) String() string {
 		ti.RemoteAddr)
 }
 
-// JSON method returns the JSON string of request trace information
+// JSON returns the JSON string of trace information.
 func (ti TraceInfo) JSON() string {
 	return toJSON(ti)
 }
 
-// Clone method returns the clone copy of [TraceInfo]
+// Clone returns a copy of TraceInfo.
 func (ti TraceInfo) Clone() *TraceInfo {
 	ti2 := new(TraceInfo)
 	*ti2 = ti

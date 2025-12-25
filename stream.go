@@ -1,8 +1,3 @@
-// Copyright (c) 2015-present Jeevanandam M (jeeva@myjeeva.com), All rights reserved.
-// resty source code and usage is governed by a MIT style
-// license that can be found in the LICENSE file.
-// SPDX-License-Identifier: MIT
-
 package fetch
 
 import (
@@ -19,18 +14,13 @@ import (
 var ErrContentDecompressorNotFound = errors.New("resty: content decoder not found")
 
 type (
-	// ContentTypeEncoder type is for encoding the request body based on header Content-Type
+	// ContentTypeEncoder encodes the request body based on Content-Type.
 	ContentTypeEncoder func(io.Writer, any) error
 
-	// ContentTypeDecoder type is for decoding the response body based on header Content-Type
+	// ContentTypeDecoder decodes the response body based on Content-Type.
 	ContentTypeDecoder func(io.Reader, any) error
 
-	// ContentDecompressor type is for decompressing response body based on header Content-Encoding
-	// ([RFC 9110])
-	//
-	// For example, gzip, deflate, etc.
-	//
-	// [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110
+	// ContentDecompressor decompresses the response body based on Content-Encoding.
 	ContentDecompressor func(io.ReadCloser) (io.ReadCloser, error)
 )
 

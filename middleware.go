@@ -1,8 +1,3 @@
-// Copyright (c) 2015-present Jeevanandam M (jeeva@myjeeva.com), All rights reserved.
-// resty source code and usage is governed by a MIT style
-// license that can be found in the LICENSE file.
-// SPDX-License-Identifier: MIT
-
 package fetch
 
 import (
@@ -22,8 +17,7 @@ import (
 // Request Middleware(s)
 //_______________________________________________________________________
 
-// PrepareRequestMiddleware method is used to prepare HTTP requests from
-// user provides request values. Request preparation fails if any error occurs
+// PrepareRequestMiddleware prepares HTTP requests from user values.
 func PrepareRequestMiddleware(c *Client, r *Request) (err error) {
 	if err = parseRequestURL(c, r); err != nil {
 		return err
@@ -433,9 +427,9 @@ func handleRequestBody(c *Client, r *Request) error {
 // Response Middleware(s)
 //_______________________________________________________________________
 
-// AutoParseResponseMiddleware method is used to parse the response body automatically
-// based on registered HTTP response `Content-Type` decoder, see [Client.AddContentTypeDecoder];
-// if [Request.SetResult], [Request.SetError], or [Client.SetError] is used
+// AutoParseResponseMiddleware parses the response body automatically
+// based on registered HTTP response Content-Type decoder, see Client.AddContentTypeDecoder;
+// if Request.SetResult, Request.SetError, or Client.SetError is used
 func AutoParseResponseMiddleware(c *Client, res *Response) (err error) {
 	if res.Err != nil || res.Request.DoNotParseResponse {
 		return // move on

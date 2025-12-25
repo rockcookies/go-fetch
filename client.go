@@ -1,8 +1,3 @@
-// Copyright (c) 2015-present Jeevanandam M (jeeva@myjeeva.com), All rights reserved.
-// resty source code and usage is governed by a MIT style
-// license that can be found in the LICENSE file.
-// SPDX-License-Identifier: MIT
-
 package fetch
 
 import (
@@ -69,30 +64,24 @@ var (
 )
 
 type (
-	// RequestMiddleware type is for request middleware, called before a request is sent
 	RequestMiddleware func(*Client, *Request) error
 
-	// ResponseMiddleware type is for response middleware, called after a response has been received
 	ResponseMiddleware func(*Client, *Response) error
 
-	// ErrorHook type is for reacting to request errors, called after all retries were attempted
+	// ErrorHook is a callback for request errors.
 	ErrorHook func(*Request, error)
 
-	// SuccessHook type is for reacting to request success
+	// SuccessHook is a callback for request success.
 	SuccessHook func(*Client, *Response)
 
-	// CloseHook type is for reacting to client closing
+	// CloseHook is a callback for client close.
 	CloseHook func()
 
-	// RequestFunc type is for extended manipulation of the Request instance
+	// RequestFunc manipulates the Request.
 	RequestFunc func(*Request) *Request
 )
 
-// Client struct is used to create a Resty client with client-level settings,
-// these settings apply to all the requests raised from the client.
-//
-// Resty also provides an option to override most of the client settings
-// at [Request] level.
+// Client is an HTTP client with configuration.
 type Client struct {
 	lock                    *sync.RWMutex
 	baseURL                 string
@@ -139,21 +128,14 @@ type Client struct {
 // Client methods
 //___________________________________
 
-// BaseURL method returns the Base URL value from the client instance.
+// BaseURL returns the Base URL value.
 func (c *Client) BaseURL() string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.baseURL
 }
 
-// SetBaseURL method sets the Base URL in the client instance. It will be used with a request
-// raised from this client with a relative URL
-//
-//	// Setting HTTP address
-//	client.SetBaseURL("http://myjeeva.com")
-//
-//	// Setting HTTPS address
-//	client.SetBaseURL("https://myjeeva.com")
+// SetBaseURL sets the Base URL.
 func (c *Client) SetBaseURL(url string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -161,24 +143,14 @@ func (c *Client) SetBaseURL(url string) *Client {
 	return c
 }
 
-// Header method returns the headers from the client instance.
+// Header returns the headers.
 func (c *Client) Header() http.Header {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.header
 }
 
-// SetHeader method sets a single header and its value in the client instance.
-// These headers will be applied to all requests raised from the client instance.
-// Also, it can be overridden by request-level header options.
-//
-// For Example: To set `Content-Type` and `Accept` as `application/json`
-//
-//	client.
-//		SetHeader("Content-Type", "application/json").
-//		SetHeader("Accept", "application/json")
-//
-// See [Request.SetHeader] or [Request.SetHeaders].
+// SetHeader sets a single header and its value.
 func (c *Client) SetHeader(header, value string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -186,18 +158,7 @@ func (c *Client) SetHeader(header, value string) *Client {
 	return c
 }
 
-// SetHeaders method sets multiple headers and their values at one go, and
-// these headers will be applied to all requests raised from the client instance.
-// Also, it can be overridden at request-level headers options.
-//
-// For Example: To set `Content-Type` and `Accept` as `application/json`
-//
-//	client.SetHeaders(map[string]string{
-//		"Content-Type": "application/json",
-//		"Accept": "application/json",
-//	})
-//
-// See [Request.SetHeaders] or [Request.SetHeader].
+// SetHeaders sets multiple headers and their values.
 func (c *Client) SetHeaders(headers map[string]string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -207,17 +168,7 @@ func (c *Client) SetHeaders(headers map[string]string) *Client {
 	return c
 }
 
-// SetHeaderVerbatim method is used to set the HTTP header key and value verbatim in the current request.
-// It is typically helpful for legacy applications or servers that require HTTP headers in a certain way
-//
-// For Example: To set header key as `all_lowercase`, `UPPERCASE`, and `x-cloud-trace-id`
-//
-//	client.
-//		SetHeaderVerbatim("all_lowercase", "available").
-//		SetHeaderVerbatim("UPPERCASE", "available").
-//		SetHeaderVerbatim("x-cloud-trace-id", "798e94019e5fc4d57fbb8901eb4c6cae")
-//
-// See [Request.SetHeaderVerbatim].
+// SetHeaderVerbatim sets the header key and value verbatim.
 func (c *Client) SetHeaderVerbatim(header, value string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -225,15 +176,14 @@ func (c *Client) SetHeaderVerbatim(header, value string) *Client {
 	return c
 }
 
-// Context method returns the [context.Context] from the client instance.
+// Context returns the context.
 func (c *Client) Context() context.Context {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.ctx
 }
 
-// SetContext method sets the given [context.Context] in the client instance and
-// it gets added to [Request] raised from this instance.
+// SetContext sets the context.
 func (c *Client) SetContext(ctx context.Context) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -241,17 +191,12 @@ func (c *Client) SetContext(ctx context.Context) *Client {
 	return c
 }
 
-// CookieJar method returns the HTTP cookie jar instance from the underlying Go HTTP Client.
+// CookieJar returns the HTTP cookie jar instance.
 func (c *Client) CookieJar() http.CookieJar {
 	return c.Client().Jar
 }
 
-// SetCookieJar method sets custom [http.CookieJar] in the resty client. It's a way to override the default.
-//
-// For Example, sometimes we don't want to save cookies in API mode so that we can remove the default
-// CookieJar in resty client.
-//
-//	client.SetCookieJar(nil)
+// SetCookieJar sets a custom cookie jar.
 func (c *Client) SetCookieJar(jar http.CookieJar) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -259,20 +204,14 @@ func (c *Client) SetCookieJar(jar http.CookieJar) *Client {
 	return c
 }
 
-// Cookies method returns all cookies registered in the client instance.
+// Cookies returns all cookies.
 func (c *Client) Cookies() []*http.Cookie {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.cookies
 }
 
-// SetCookie method appends a single cookie to the client instance.
-// These cookies will be added to all the requests from this client instance.
-//
-//	client.SetCookie(&http.Cookie{
-//		Name:"go-resty",
-//		Value:"This is cookie value",
-//	})
+// SetCookie appends a single cookie.
 func (c *Client) SetCookie(hc *http.Cookie) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -280,22 +219,7 @@ func (c *Client) SetCookie(hc *http.Cookie) *Client {
 	return c
 }
 
-// SetCookies method sets an array of cookies in the client instance.
-// These cookies will be added to all the requests from this client instance.
-//
-//	cookies := []*http.Cookie{
-//		&http.Cookie{
-//			Name:"go-resty-1",
-//			Value:"This is cookie 1 value",
-//		},
-//		&http.Cookie{
-//			Name:"go-resty-2",
-//			Value:"This is cookie 2 value",
-//		},
-//	}
-//
-//	// Setting a cookies into resty
-//	client.SetCookies(cookies)
+// SetCookies sets multiple cookies.
 func (c *Client) SetCookies(cs []*http.Cookie) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -303,26 +227,14 @@ func (c *Client) SetCookies(cs []*http.Cookie) *Client {
 	return c
 }
 
-// QueryParams method returns all query parameters and their values from the client instance.
+// QueryParams returns all query parameters.
 func (c *Client) QueryParams() url.Values {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.queryParams
 }
 
-// SetQueryParam method sets a single parameter and its value in the client instance.
-// It will be formed as a query string for the request.
-//
-//	For Example: `search=kitchen%20papers&size=large`
-//
-// In the URL after the `?` mark. These query params will be added to all the requests raised from
-// this client instance. Also, it can be overridden at the request level.
-//
-// See [Request.SetQueryParam] or [Request.SetQueryParams].
-//
-//	client.
-//		SetQueryParam("search", "kitchen papers").
-//		SetQueryParam("size", "large")
+// SetQueryParam sets a single parameter and its value.
 func (c *Client) SetQueryParam(param, value string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -330,20 +242,7 @@ func (c *Client) SetQueryParam(param, value string) *Client {
 	return c
 }
 
-// SetQueryParams method sets multiple parameters and their values at one go in the client instance.
-// It will be formed as a query string for the request.
-//
-//	For Example: `search=kitchen%20papers&size=large`
-//
-// In the URL after the `?` mark. These query params will be added to all the requests raised from this
-// client instance. Also, it can be overridden at the request level.
-//
-// See [Request.SetQueryParams] or [Request.SetQueryParam].
-//
-//	client.SetQueryParams(map[string]string{
-//		"search": "kitchen papers",
-//		"size": "large",
-//	})
+// SetQueryParams sets multiple parameters.
 func (c *Client) SetQueryParams(params map[string]string) *Client {
 	// Do not lock here since there is potential deadlock.
 	for p, v := range params {
@@ -352,24 +251,14 @@ func (c *Client) SetQueryParams(params map[string]string) *Client {
 	return c
 }
 
-// FormData method returns the form parameters and their values from the client instance.
+// FormData returns the form parameters.
 func (c *Client) FormData() url.Values {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.formData
 }
 
-// SetFormData method sets Form parameters and their values in the client instance.
-// The request content type would be set as `application/x-www-form-urlencoded`.
-// The client-level form data gets added to all the requests. Also, it can be
-// overridden at the request level.
-//
-// See [Request.SetFormData].
-//
-//	client.SetFormData(map[string]string{
-//		"access_token": "BC594900-518B-4F7E-AC75-BD37F019E08F",
-//		"user_id": "3455454545",
-//	})
+// SetFormData sets form parameters.
 func (c *Client) SetFormData(data map[string]string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -379,7 +268,7 @@ func (c *Client) SetFormData(data map[string]string) *Client {
 	return c
 }
 
-// R method creates a new request instance; it's used for Get, Post, Put, Delete, Patch, Head, Options, etc.
+// R creates a new request.
 func (c *Client) R() *Request {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -414,27 +303,12 @@ func (c *Client) R() *Request {
 	return r
 }
 
-// NewRequest method is an alias for method `R()`.
+// NewRequest is an alias for R.
 func (c *Client) NewRequest() *Request {
 	return c.R()
 }
 
-// SetRequestMiddlewares method allows Resty users to override the default request
-// middlewares sequence
-//
-//	client.SetRequestMiddlewares(
-//		Custom1RequestMiddleware,
-//		Custom2RequestMiddleware,
-//		resty.PrepareRequestMiddleware, // after this, `Request.RawRequest` instance is available
-//		Custom3RequestMiddleware,
-//		Custom4RequestMiddleware,
-//	)
-//
-// See, [Client.AddRequestMiddleware]
-//
-// NOTE:
-//   - It overwrites the existing request middleware list.
-//   - Be sure to include Resty request middlewares in the request chain at the appropriate spot.
+// SetRequestMiddlewares sets the request middlewares.
 func (c *Client) SetRequestMiddlewares(middlewares ...RequestMiddleware) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -442,24 +316,7 @@ func (c *Client) SetRequestMiddlewares(middlewares ...RequestMiddleware) *Client
 	return c
 }
 
-// SetResponseMiddlewares method allows Resty users to override the default response
-// middlewares sequence
-//
-//	client.SetResponseMiddlewares(
-//		Custom1ResponseMiddleware,
-//		Custom2ResponseMiddleware,
-//		resty.AutoParseResponseMiddleware, // before this, the body is not read except on the debug flow
-//		Custom3ResponseMiddleware,
-//		resty.SaveToFileResponseMiddleware, // See, Request.SetOutputFileName, Request.SetSaveResponse
-//		Custom4ResponseMiddleware,
-//		Custom5ResponseMiddleware,
-//	)
-//
-// See, [Client.AddResponseMiddleware]
-//
-// NOTE:
-//   - It overwrites the existing response middleware list.
-//   - Be sure to include Resty response middlewares in the response chain at the appropriate spot.
+// SetResponseMiddlewares sets the response middlewares.
 func (c *Client) SetResponseMiddlewares(middlewares ...ResponseMiddleware) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -473,15 +330,7 @@ func (c *Client) requestMiddlewares() []RequestMiddleware {
 	return c.beforeRequest
 }
 
-// AddRequestMiddleware method appends a request middleware to the before request chain.
-// After all requests, middlewares are applied, and the request is sent to the host server.
-//
-//	client.AddRequestMiddleware(func(c *resty.Client, r *resty.Request) error {
-//		// Now you have access to the Client and Request instance
-//		// manipulate it as per your need
-//
-//		return nil 	// if its successful otherwise return error
-//	})
+// AddRequestMiddleware appends a request middleware.
 func (c *Client) AddRequestMiddleware(m RequestMiddleware) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -496,17 +345,7 @@ func (c *Client) responseMiddlewares() []ResponseMiddleware {
 	return c.afterResponse
 }
 
-// AddResponseMiddleware method appends response middleware to the after-response chain.
-// All the response middlewares are applied; once we receive a response
-// from the host server.
-//
-//	client.AddResponseMiddleware(func(c *resty.Client, r *resty.Response) error {
-//		// Now you have access to the Client and Response instance
-//		// Also, you could access request via Response.Request i.e., r.Request
-//		// manipulate it as per your need
-//
-//		return nil 	// if its successful otherwise return error
-//	})
+// AddResponseMiddleware appends response middleware.
 func (c *Client) AddResponseMiddleware(m ResponseMiddleware) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -514,23 +353,7 @@ func (c *Client) AddResponseMiddleware(m ResponseMiddleware) *Client {
 	return c
 }
 
-// OnError method adds a callback that will be run whenever a request execution fails.
-// This is called after all retries have been attempted (if any).
-// If there was a response from the server, the error will be wrapped in [ResponseError]
-// which has the last response received from the server.
-//
-//	client.OnError(func(req *resty.Request, err error) {
-//		if v, ok := err.(*resty.ResponseError); ok {
-//			// Do something with v.Response
-//		}
-//		// Log the error, increment a metric, etc...
-//	})
-//
-// Out of the [Client.OnSuccess], [Client.OnError], [Client.OnInvalid], [Client.OnPanic]
-// callbacks, exactly one set will be invoked for each call to [Request.Execute] that completes.
-//
-// NOTE:
-//   - Do not use [Client] setter methods within OnError hooks; deadlock will happen.
+// OnError adds a callback for request failures.
 func (c *Client) OnError(h ErrorHook) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -538,14 +361,7 @@ func (c *Client) OnError(h ErrorHook) *Client {
 	return c
 }
 
-// OnSuccess method adds a callback that will be run whenever a request execution
-// succeeds.  This is called after all retries have been attempted (if any).
-//
-// Out of the [Client.OnSuccess], [Client.OnError], [Client.OnInvalid], [Client.OnPanic]
-// callbacks, exactly one set will be invoked for each call to [Request.Execute] that completes.
-//
-// NOTE:
-//   - Do not use [Client] setter methods within OnSuccess hooks; deadlock will happen.
+// OnSuccess adds a callback for request success.
 func (c *Client) OnSuccess(h SuccessHook) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -553,14 +369,7 @@ func (c *Client) OnSuccess(h SuccessHook) *Client {
 	return c
 }
 
-// OnInvalid method adds a callback that will be run whenever a request execution
-// fails before it starts because the request is invalid.
-//
-// Out of the [Client.OnSuccess], [Client.OnError], [Client.OnInvalid], [Client.OnPanic]
-// callbacks, exactly one set will be invoked for each call to [Request.Execute] that completes.
-//
-// NOTE:
-//   - Do not use [Client] setter methods within OnInvalid hooks; deadlock will happen.
+// OnInvalid adds a callback for pre-execution failures.
 func (c *Client) OnInvalid(h ErrorHook) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -568,17 +377,7 @@ func (c *Client) OnInvalid(h ErrorHook) *Client {
 	return c
 }
 
-// OnPanic method adds a callback that will be run whenever a request execution
-// panics.
-//
-// Out of the [Client.OnSuccess], [Client.OnError], [Client.OnInvalid], [Client.OnPanic]
-// callbacks, exactly one set will be invoked for each call to [Request.Execute] that completes.
-//
-// If an [Client.OnSuccess], [Client.OnError], or [Client.OnInvalid] callback panics,
-// then exactly one rule can be violated.
-//
-// NOTE:
-//   - Do not use [Client] setter methods within OnPanic hooks; deadlock will happen.
+// OnPanic adds a callback for request panics.
 func (c *Client) OnPanic(h ErrorHook) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -586,8 +385,7 @@ func (c *Client) OnPanic(h ErrorHook) *Client {
 	return c
 }
 
-// OnClose method adds a callback that will be run whenever the client is closed.
-// The hooks are executed in the order they were registered.
+// OnClose adds a callback for client close.
 func (c *Client) OnClose(h CloseHook) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -595,16 +393,14 @@ func (c *Client) OnClose(h CloseHook) *Client {
 	return c
 }
 
-// ContentTypeEncoders method returns all the registered content type encoders.
+// ContentTypeEncoders returns all registered encoders.
 func (c *Client) ContentTypeEncoders() map[string]ContentTypeEncoder {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.contentTypeEncoders
 }
 
-// AddContentTypeEncoder method adds the user-provided Content-Type encoder into a client.
-//
-// NOTE: It overwrites the encoder function if the given Content-Type key already exists.
+// AddContentTypeEncoder adds a Content-Type encoder.
 func (c *Client) AddContentTypeEncoder(ct string, e ContentTypeEncoder) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -623,16 +419,14 @@ func (c *Client) inferContentTypeEncoder(ct ...string) (ContentTypeEncoder, bool
 	return nil, false
 }
 
-// ContentTypeDecoders method returns all the registered content type decoders.
+// ContentTypeDecoders returns all registered decoders.
 func (c *Client) ContentTypeDecoders() map[string]ContentTypeDecoder {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.contentTypeDecoders
 }
 
-// AddContentTypeDecoder method adds the user-provided Content-Type decoder into a client.
-//
-// NOTE: It overwrites the decoder function if the given Content-Type key already exists.
+// AddContentTypeDecoder adds a Content-Type decoder.
 func (c *Client) AddContentTypeDecoder(ct string, d ContentTypeDecoder) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -651,19 +445,14 @@ func (c *Client) inferContentTypeDecoder(ct ...string) (ContentTypeDecoder, bool
 	return nil, false
 }
 
-// ContentDecompressors method returns all the registered content-encoding Decompressors.
+// ContentDecompressors returns all registered decompressors.
 func (c *Client) ContentDecompressors() map[string]ContentDecompressor {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.contentDecompressors
 }
 
-// AddContentDecompressor method adds the user-provided Content-Encoding ([RFC 9110]) Decompressor
-// and directive into a client.
-//
-// NOTE: It overwrites the Decompressor function if the given Content-Encoding directive already exists.
-//
-// [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110
+// AddContentDecompressor adds a Content-Encoding decompressor.
 func (c *Client) AddContentDecompressor(k string, d ContentDecompressor) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -674,23 +463,14 @@ func (c *Client) AddContentDecompressor(k string, d ContentDecompressor) *Client
 	return c
 }
 
-// ContentDecompressorKeys method returns all the registered content-encoding Decompressors
-// keys as comma-separated string.
+// ContentDecompressorKeys returns decompressor keys.
 func (c *Client) ContentDecompressorKeys() string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return strings.Join(c.contentDecompressorKeys, ", ")
 }
 
-// SetContentDecompressorKeys method sets given Content-Encoding ([RFC 9110]) directives into the client instance.
-//
-// It checks the given Content-Encoding exists in the [ContentDecompressor] list before assigning it,
-// if it does not exist, it will skip that directive.
-//
-// Use this method to overwrite the default order. If a new content Decompressor is added,
-// that directive will be the first.
-//
-// [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110
+// SetContentDecompressorKeys sets decompressor priority order.
 func (c *Client) SetContentDecompressorKeys(keys []string) *Client {
 	result := make([]string, 0)
 	decoders := c.ContentDecompressors()
@@ -706,23 +486,14 @@ func (c *Client) SetContentDecompressorKeys(keys []string) *Client {
 	return c
 }
 
-// IsDebug method returns `true` if the client is in debug mode; otherwise, it is `false`.
+// IsDebug returns the debug mode status.
 func (c *Client) IsDebug() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.debug
 }
 
-// SetDebug method enables the debug mode on the Resty client. The client logs details
-// of every request and response.
-//
-//	client.SetDebug(true)
-//
-// Also, it can be enabled at the request level for a particular request; see [Request.SetDebug].
-//   - For [Request], it logs information such as HTTP verb, Relative URL path,
-//     Host, Headers, and Body if it has one.
-//   - For [Response], it logs information such as Status, Response Time, Headers,
-//     and Body if it has one.
+// SetDebug enables or disables debug mode.
 func (c *Client) SetDebug(d bool) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -730,17 +501,14 @@ func (c *Client) SetDebug(d bool) *Client {
 	return c
 }
 
-// DebugBodyLimit method returns the debug body limit value set on the client instance
+// DebugBodyLimit returns the debug body limit.
 func (c *Client) DebugBodyLimit() int {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.debugBodyLimit
 }
 
-// SetDebugBodyLimit sets the maximum size in bytes for which the response and
-// request body will be logged in debug mode.
-//
-//	client.SetDebugBodyLimit(1000000)
+// SetDebugBodyLimit sets the maximum body size for debug logging.
 func (c *Client) SetDebugBodyLimit(sl int) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -754,8 +522,7 @@ func (c *Client) debugLogCallbackFunc() DebugLogCallbackFunc {
 	return c.debugLogCallback
 }
 
-// OnDebugLog method sets the debug log callback function to the client instance.
-// Registered callback gets called before the Resty logs the information.
+// OnDebugLog sets the debug log callback.
 func (c *Client) OnDebugLog(dlc DebugLogCallbackFunc) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -773,7 +540,7 @@ func (c *Client) debugLogFormatterFunc() DebugLogFormatterFunc {
 	return c.debugLogFormatter
 }
 
-// SetDebugLogFormatter method sets the Resty debug log formatter to the client instance.
+// SetDebugLogFormatter sets the debug log formatter.
 func (c *Client) SetDebugLogFormatter(df DebugLogFormatterFunc) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -781,18 +548,14 @@ func (c *Client) SetDebugLogFormatter(df DebugLogFormatterFunc) *Client {
 	return c
 }
 
-// IsDisableWarn method returns `true` if the warning message is disabled; otherwise, it is `false`.
+// IsDisableWarn returns the warning disable status.
 func (c *Client) IsDisableWarn() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.disableWarn
 }
 
-// SetDisableWarn method disables the warning log message on the Resty client.
-//
-// For example, Resty warns users when BasicAuth is used in non-TLS mode.
-//
-//	client.SetDisableWarn(true)
+// SetDisableWarn enables or disables warning messages.
 func (c *Client) SetDisableWarn(d bool) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -800,16 +563,14 @@ func (c *Client) SetDisableWarn(d bool) *Client {
 	return c
 }
 
-// Logger method returns the logger instance used by the client instance.
+// Logger returns the logger instance.
 func (c *Client) Logger() Logger {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.log
 }
 
-// SetLogger method sets given writer for logging Resty request and response details.
-//
-// Compliant to interface [resty.Logger]
+// SetLogger sets the logger instance.
 func (c *Client) SetLogger(l Logger) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -817,19 +578,14 @@ func (c *Client) SetLogger(l Logger) *Client {
 	return c
 }
 
-// IsContentLength method returns true if the user requests to set content length. Otherwise, it is false.
+// IsContentLength returns the content length status.
 func (c *Client) IsContentLength() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.setContentLength
 }
 
-// SetContentLength method enables the HTTP header `Content-Length` value for every request.
-// By default, Resty won't set `Content-Length`.
-//
-//	client.SetContentLength(true)
-//
-// Also, you have the option to enable a particular request. See [Request.SetContentLength]
+// SetContentLength enables the Content-Length header.
 func (c *Client) SetContentLength(l bool) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -837,20 +593,14 @@ func (c *Client) SetContentLength(l bool) *Client {
 	return c
 }
 
-// Timeout method returns the timeout duration value from the client
+// Timeout returns the timeout duration.
 func (c *Client) Timeout() time.Duration {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.timeout
 }
 
-// SetTimeout method is used to set a timeout for a request raised by the client.
-//
-//	client.SetTimeout(1 * time.Minute)
-//
-// It can be overridden at the request level. See [Request.SetTimeout]
-//
-// NOTE: Resty uses [context.WithTimeout] on the request, it does not use [http.Client].Timeout
+// SetTimeout sets the timeout for requests.
 func (c *Client) SetTimeout(timeout time.Duration) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -858,20 +608,14 @@ func (c *Client) SetTimeout(timeout time.Duration) *Client {
 	return c
 }
 
-// Error method returns the global or client common `Error` object type registered in the Resty.
+// Error returns the error object type.
 func (c *Client) Error() reflect.Type {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.errorType
 }
 
-// SetError method registers the global or client common `Error` object into Resty.
-// It is used for automatic unmarshalling if the response status code is greater than 399 and
-// content type is JSON or XML. It can be a pointer or a non-pointer.
-//
-//	client.SetError(&Error{})
-//	// OR
-//	client.SetError(Error{})
+// SetError registers the common error object for automatic unmarshalling.
 func (c *Client) SetError(v any) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -887,15 +631,8 @@ func (c *Client) newErrorInterface() any {
 	return reflect.New(e).Interface()
 }
 
-// SetRedirectPolicy method sets the redirect policy for the client. Resty provides ready-to-use
-// redirect policies. Wanna create one for yourself, refer to `redirect.go`.
-//
-//	client.SetRedirectPolicy(resty.FlexibleRedirectPolicy(20))
-//
-//	// Need multiple redirect policies together
-//	client.SetRedirectPolicy(resty.FlexibleRedirectPolicy(20), resty.DomainCheckRedirectPolicy("host1.com", "host2.net"))
-//
-// NOTE: It overwrites the previous redirect policies in the client instance.
+// SetRedirectPolicy sets the redirect policy.
+// NOTE: Overwrites previous redirect policies.
 func (c *Client) SetRedirectPolicy(policies ...RedirectPolicy) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -910,22 +647,14 @@ func (c *Client) SetRedirectPolicy(policies ...RedirectPolicy) *Client {
 	return c
 }
 
-// ProxyURL method returns the proxy URL if set otherwise nil.
+// ProxyURL returns the proxy URL.
 func (c *Client) ProxyURL() *url.URL {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.proxyURL
 }
 
-// SetProxy method sets the Proxy URL and Port for the Resty client.
-//
-//	// HTTP/HTTPS proxy
-//	client.SetProxy("http://proxyserver:8888")
-//
-//	// SOCKS5 Proxy
-//	client.SetProxy("socks5://127.0.0.1:1080")
-//
-// OR you could also set Proxy via environment variable, refer to [http.ProxyFromEnvironment]
+// SetProxy sets the proxy URL.
 func (c *Client) SetProxy(proxyURL string) *Client {
 	transport, err := c.HTTPTransport()
 	if err != nil {
@@ -946,9 +675,7 @@ func (c *Client) SetProxy(proxyURL string) *Client {
 	return c
 }
 
-// RemoveProxy method removes the proxy configuration from the Resty client
-//
-//	client.RemoveProxy()
+// RemoveProxy removes the proxy configuration.
 func (c *Client) RemoveProxy() *Client {
 	transport, err := c.HTTPTransport()
 	if err != nil {
@@ -963,18 +690,14 @@ func (c *Client) RemoveProxy() *Client {
 	return c
 }
 
-// OutputDirectory method returns the output directory value from the client.
+// OutputDirectory returns the output directory.
 func (c *Client) OutputDirectory() string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.outputDirectory
 }
 
-// SetOutputDirectory method sets the output directory for saving HTTP responses in a file.
-// Resty creates one if the output directory does not exist. This setting is optional,
-// if you plan to use the absolute path in [Request.SetOutputFileName] and can used together.
-//
-//	client.SetOutputDirectory("/save/http/response/here")
+// SetOutputDirectory sets the output directory for saving HTTP responses.
 func (c *Client) SetOutputDirectory(dirPath string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -982,8 +705,7 @@ func (c *Client) SetOutputDirectory(dirPath string) *Client {
 	return c
 }
 
-// HTTPTransport method does type assertion and returns [http.Transport]
-// from the client instance, if type assertion fails it returns an error
+// HTTPTransport returns the http.Transport.
 func (c *Client) HTTPTransport() (*http.Transport, error) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -993,26 +715,15 @@ func (c *Client) HTTPTransport() (*http.Transport, error) {
 	return nil, ErrNotHttpTransportType
 }
 
-// Transport method returns underlying client transport referance as-is
-// i.e., [http.RoundTripper]
+// Transport returns the underlying http.RoundTripper.
 func (c *Client) Transport() http.RoundTripper {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.httpClient.Transport
 }
 
-// SetTransport method sets custom [http.Transport] or any [http.RoundTripper]
-// compatible interface implementation in the Resty client.
-//
-//	transport := &http.Transport{
-//		// something like Proxying to httptest.Server, etc...
-//		Proxy: func(req *http.Request) (*url.URL, error) {
-//			return url.Parse(server.URL)
-//		},
-//	}
-//	client.SetTransport(transport)
-//
-// NOTE: It overwrites the Resty client transport instance and its configurations.
+// SetTransport sets a custom http.RoundTripper.
+// NOTE: It overwrites the existing transport.
 func (c *Client) SetTransport(transport http.RoundTripper) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1022,18 +733,14 @@ func (c *Client) SetTransport(transport http.RoundTripper) *Client {
 	return c
 }
 
-// Scheme method returns custom scheme value from the client.
-//
-//	scheme := client.Scheme()
+// Scheme returns the custom scheme value.
 func (c *Client) Scheme() string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.scheme
 }
 
-// SetScheme method sets a custom scheme for the Resty client. It's a way to override the default.
-//
-//	client.SetScheme("http")
+// SetScheme sets a custom scheme.
 func (c *Client) SetScheme(scheme string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1043,10 +750,7 @@ func (c *Client) SetScheme(scheme string) *Client {
 	return c
 }
 
-// SetCloseConnection method sets variable `Close` in HTTP request struct with the given
-// value. More info: https://golang.org/src/net/http/request.go
-//
-// It can be overridden at the request level, see [Request.SetCloseConnection]
+// SetCloseConnection sets the Close field in HTTP request.
 func (c *Client) SetCloseConnection(close bool) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1054,14 +758,8 @@ func (c *Client) SetCloseConnection(close bool) *Client {
 	return c
 }
 
-// SetDoNotParseResponse method instructs Resty not to parse the response body automatically.
-//
-// Resty exposes the raw response body as [io.ReadCloser]. If you use it, do not
-// forget to close the body, otherwise, you might get into connection leaks, and connection
-// reuse may not happen.
-//
-// NOTE: The default [Response] middlewares are not executed when using this option. User
-// takes over the control of handling response body from Resty.
+// SetDoNotParseResponse disables automatic response parsing.
+// NOTE: Default response middlewares are not executed.
 func (c *Client) SetDoNotParseResponse(notParse bool) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1069,29 +767,15 @@ func (c *Client) SetDoNotParseResponse(notParse bool) *Client {
 	return c
 }
 
-// PathParams method returns the path parameters from the client.
-//
-//	pathParams := client.PathParams()
+// PathParams returns the path parameters.
 func (c *Client) PathParams() map[string]string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.pathParams
 }
 
-// SetPathParam method sets a single URL path key-value pair in the
-// Resty client instance.
-//
-//	client.SetPathParam("userId", "sample@sample.com")
-//
-//	Result:
-//	   URL - /v1/users/{userId}/details
-//	   Composed URL - /v1/users/sample@sample.com/details
-//
-// It replaces the value of the key while composing the request URL.
-// The value will be escaped using [url.PathEscape] function.
-//
-// It can be overridden at the request level,
-// see [Request.SetPathParam] or [Request.SetPathParams]
+// SetPathParam sets a single URL path parameter.
+// The value will be escaped using url.PathEscape.
 func (c *Client) SetPathParam(param, value string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1099,24 +783,8 @@ func (c *Client) SetPathParam(param, value string) *Client {
 	return c
 }
 
-// SetPathParams method sets multiple URL path key-value pairs at one go in the
-// Resty client instance.
-//
-//	client.SetPathParams(map[string]string{
-//		"userId":       "sample@sample.com",
-//		"subAccountId": "100002",
-//		"path":         "groups/developers",
-//	})
-//
-//	Result:
-//	   URL - /v1/users/{userId}/{subAccountId}/{path}/details
-//	   Composed URL - /v1/users/sample@sample.com/100002/groups%2Fdevelopers/details
-//
-// It replaces the value of the key while composing the request URL.
-// The values will be escaped using [url.PathEscape] function.
-//
-// It can be overridden at the request level,
-// see [Request.SetPathParam] or [Request.SetPathParams]
+// SetPathParams sets multiple URL path parameters.
+// Values will be escaped using url.PathEscape.
 func (c *Client) SetPathParams(params map[string]string) *Client {
 	for p, v := range params {
 		c.SetPathParam(p, v)
@@ -1124,20 +792,7 @@ func (c *Client) SetPathParams(params map[string]string) *Client {
 	return c
 }
 
-// SetRawPathParam method sets a single URL path key-value pair in the
-// Resty client instance without path escape.
-//
-//	client.SetRawPathParam("path", "groups/developers")
-//
-//	Result:
-//		URL - /v1/users/{path}/details
-//		Composed URL - /v1/users/groups/developers/details
-//
-// It replaces the value of the key while composing the request URL.
-// The value will be used as-is, no path escape applied.
-//
-// It can be overridden at the request level,
-// see [Request.SetRawPathParam] or [Request.SetRawPathParams]
+// SetRawPathParam sets a URL path parameter without escaping.
 func (c *Client) SetRawPathParam(param, value string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1145,24 +800,7 @@ func (c *Client) SetRawPathParam(param, value string) *Client {
 	return c
 }
 
-// SetRawPathParams method sets multiple URL path key-value pairs at one go in the
-// Resty client instance without path escape.
-//
-//	client.SetRawPathParams(map[string]string{
-//		"userId":       "sample@sample.com",
-//		"subAccountId": "100002",
-//		"path":         "groups/developers",
-//	})
-//
-//	Result:
-//	   URL - /v1/users/{userId}/{subAccountId}/{path}/details
-//	   Composed URL - /v1/users/sample@sample.com/100002/groups/developers/details
-//
-// It replaces the value of the key while composing the request URL.
-// The value will be used as-is, no path escape applied.
-//
-// It can be overridden at the request level,
-// see [Request.SetRawPathParam] or [Request.SetRawPathParams]
+// SetRawPathParams sets multiple URL path parameters without escaping.
 func (c *Client) SetRawPathParams(params map[string]string) *Client {
 	for p, v := range params {
 		c.SetRawPathParam(p, v)
@@ -1170,12 +808,8 @@ func (c *Client) SetRawPathParams(params map[string]string) *Client {
 	return c
 }
 
-// SetJSONEscapeHTML method enables or disables the HTML escape on JSON marshal.
-// By default, escape HTML is `true`.
-//
-// NOTE: This option only applies to the standard JSON Marshaller used by Resty.
-//
-// It can be overridden at the request level, see [Request.SetJSONEscapeHTML]
+// SetJSONEscapeHTML enables or disables HTML escape on JSON marshal.
+// NOTE: Only applies to standard JSON Marshaller.
 func (c *Client) SetJSONEscapeHTML(b bool) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1183,25 +817,15 @@ func (c *Client) SetJSONEscapeHTML(b bool) *Client {
 	return c
 }
 
-// ResponseBodyLimit method returns the value max body size limit in bytes from
-// the client instance.
+// ResponseBodyLimit returns the response body size limit.
 func (c *Client) ResponseBodyLimit() int64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.responseBodyLimit
 }
 
-// SetResponseBodyLimit method sets a maximum body size limit in bytes on response,
-// avoid reading too much data to memory.
-//
-// Client will return [resty.ErrResponseBodyTooLarge] if the body size of the body
-// in the uncompressed response is larger than the limit.
-// Body size limit will not be enforced in the following cases:
-//   - ResponseBodyLimit <= 0, which is the default behavior.
-//   - [Request.SetOutputFileName] is called to save response data to the file.
-//   - "DoNotParseResponse" is set for client or request.
-//
-// It can be overridden at the request level; see [Request.SetResponseBodyLimit]
+// SetResponseBodyLimit sets the response body size limit.
+// NOTE: Limit not enforced when <= 0, or with SetOutputFileName, or DoNotParseResponse.
 func (c *Client) SetResponseBodyLimit(v int64) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1209,28 +833,16 @@ func (c *Client) SetResponseBodyLimit(v int64) *Client {
 	return c
 }
 
-// SetTrace method enables the Resty client trace for the requests fired from
-// the client using [httptrace.ClientTrace] and provides insights.
-//
-//	client := resty.New().SetTrace(true)
-//
-//	resp, err := client.R().Get("https://httpbin.org/get")
-//	fmt.Println("error:", err)
-//	fmt.Println("Trace Info:", resp.Request.TraceInfo())
-//
-// The method [Request.EnableTrace] is also available to get trace info for a single request.
+// SetTrace enables HTTP trace for requests.
 
-// IsTrace method returns true if the trace is enabled on the client instance; otherwise, it returns false.
+// IsTrace returns the trace status.
 func (c *Client) IsTrace() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.isTrace
 }
 
-// SetTrace method is used to turn on/off the trace capability in the Resty client
-// Refer to [Client.EnableTrace] or [Client.DisableTrace].
-//
-// Also, see [Request.SetTrace]
+// SetTrace enables or disables tracing.
 func (c *Client) SetTrace(t bool) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1238,12 +850,8 @@ func (c *Client) SetTrace(t bool) *Client {
 	return c
 }
 
-// SetUnescapeQueryParams method sets the choice of unescape query parameters for the request URL.
-// To prevent broken URL, Resty replaces space (" ") with "+" in the query parameters.
-//
-// See [Request.SetUnescapeQueryParams]
-//
-// NOTE: Request failure is possible due to non-standard usage of Unescaped Query Parameters.
+// SetUnescapeQueryParams sets whether to unescape query parameters.
+// NOTE: Request failure is possible with non-standard usage.
 func (c *Client) SetUnescapeQueryParams(unescape bool) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1251,23 +859,15 @@ func (c *Client) SetUnescapeQueryParams(unescape bool) *Client {
 	return c
 }
 
-// ResponseBodyUnlimitedReads method returns true if enabled. Otherwise, it returns false
+// ResponseBodyUnlimitedReads returns the unlimited reads status.
 func (c *Client) ResponseBodyUnlimitedReads() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.resBodyUnlimitedReads
 }
 
-// SetResponseBodyUnlimitedReads method is to turn on/off the response body in memory
-// that provides an ability to do unlimited reads.
-//
-// It can be overridden at the request level; see [Request.SetResponseBodyUnlimitedReads]
-//
-// Unlimited reads are possible in a few scenarios, even without enabling it.
-//   - When debug mode is enabled
-//
-// NOTE: Use with care
-//   - Turning on this feature keeps the response body in memory, which might cause additional memory usage.
+// SetResponseBodyUnlimitedReads enables unlimited response body reads.
+// NOTE: Keeps response body in memory. Also works in debug mode.
 func (c *Client) SetResponseBodyUnlimitedReads(b bool) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1275,27 +875,20 @@ func (c *Client) SetResponseBodyUnlimitedReads(b bool) *Client {
 	return c
 }
 
-// IsProxySet method returns the true is proxy is set from the Resty client; otherwise
-// false. By default, the proxy is set from the environment variable; refer to [http.ProxyFromEnvironment].
+// IsProxySet returns whether proxy is configured.
 func (c *Client) IsProxySet() bool {
 	return c.ProxyURL() != nil
 }
 
-// Client method returns the underlying Go [http.Client] used by the Resty.
+// Client returns the underlying http.Client.
 func (c *Client) Client() *http.Client {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.httpClient
 }
 
-// Clone method returns a clone of the original client.
-//
-// NOTE: Use with care:
-//   - Interface values are not deeply cloned. Thus, both the original and the
-//     clone will use the same value.
-//   - It is not safe for concurrent use. You should only use this method
-//     when you are sure that any other concurrent process is not using the client
-//     or client instance is protected by a mutex.
+// Clone creates a shallow copy of the client.
+// NOTE: Interface values are not deeply cloned. Not safe for concurrent use.
 func (c *Client) Clone(ctx context.Context) *Client {
 	cc := new(Client)
 	// dereference the pointer and copy the value
@@ -1328,7 +921,7 @@ func (c *Client) Clone(ctx context.Context) *Client {
 	return cc
 }
 
-// Close method performs cleanup and closure activities on the client instance
+// Close performs cleanup activities.
 func (c *Client) Close() error {
 	// Execute close hooks first
 	c.onCloseHooks()

@@ -1,8 +1,3 @@
-// Copyright (c) 2015-present Jeevanandam M (jeeva@myjeeva.com), All rights reserved.
-// resty source code and usage is governed by a MIT style
-// license that can be found in the LICENSE file.
-// SPDX-License-Identifier: MIT
-
 package fetch
 
 import (
@@ -20,8 +15,7 @@ func escapeQuotes(s string) string {
 	return quoteEscaper.Replace(s)
 }
 
-// MultipartField struct represents the multipart field to compose
-// all [io.Reader] capable input for multipart form request
+// MultipartField represents a multipart field for form requests.
 type MultipartField struct {
 	// Name of the multipart field name that the server expects it
 	Name string
@@ -60,7 +54,7 @@ type MultipartField struct {
 	Values []string
 }
 
-// Clone method returns the deep copy of m except [io.Reader].
+// Clone returns a deep copy of MultipartField except io.Reader.
 func (mf *MultipartField) Clone() *MultipartField {
 	mf2 := new(MultipartField)
 	*mf2 = *mf

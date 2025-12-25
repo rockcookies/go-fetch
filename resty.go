@@ -1,10 +1,4 @@
-// Copyright (c) 2015-present Jeevanandam M (jeeva@myjeeva.com), All rights reserved.
-// resty source code and usage is governed by a MIT style
-// license that can be found in the LICENSE file.
-// SPDX-License-Identifier: MIT
-
-// package fetch provides Simple HTTP, REST, and SSE client library for Go.
-package fetch // import "resty.dev/v3"
+package fetch
 
 import (
 	"math"
@@ -14,13 +8,13 @@ import (
 	"sync"
 )
 
-// New method creates a new Resty client.
+// New creates a new Client.
 func New() *Client {
 	return NewWithTransport(nil)
 }
 
-// NewWithTransport method creates a new Resty client with the given [http.RoundTripper].
-// If transport is nil, [http.DefaultTransport] is used.
+// NewWithTransport creates a new Client with the given transport.
+// Uses http.DefaultTransport if transport is nil.
 func NewWithTransport(transport http.RoundTripper) *Client {
 	if transport == nil {
 		transport = http.DefaultTransport
@@ -31,7 +25,7 @@ func NewWithTransport(transport http.RoundTripper) *Client {
 	})
 }
 
-// NewWithClient method creates a new Resty client with given [http.Client].
+// NewWithClient creates a new Client with the given http.Client.
 func NewWithClient(hc *http.Client) *Client {
 	return createClient(hc)
 }

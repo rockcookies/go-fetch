@@ -1,8 +1,3 @@
-// Copyright (c) 2015-present Jeevanandam M (jeeva@myjeeva.com), All rights reserved.
-// resty source code and usage is governed by a MIT style
-// license that can be found in the LICENSE file.
-// SPDX-License-Identifier: MIT
-
 package fetch
 
 import (
@@ -73,12 +68,12 @@ func (l *logger) output(format string, v ...any) {
 // Package Helper methods
 //_______________________________________________________________________
 
-// isStringEmpty method tells whether given string is empty or not
+// isStringEmpty tells whether string is empty.
 func isStringEmpty(str string) bool {
 	return len(strings.TrimSpace(str)) == 0
 }
 
-// detectContentType method is used to figure out `Request.Body` content type for request header
+// detectContentType figures out Request.Body content type.
 func detectContentType(body any) string {
 	contentType := plainTextType
 	kind := inferKind(body)
@@ -339,9 +334,9 @@ var (
 	processID = os.Getpid()
 )
 
-// newGUID method returns a new Globally Unique Identifier (GUID).
+// newGUID returns a new Globally Unique Identifier (GUID).
 //
-// The 12-byte `UniqueId` consists of-
+// The 12-byte UniqueId consists of-
 //   - 4-byte value representing the seconds since the Unix epoch,
 //   - 3-byte machine identifier,
 //   - 2-byte process id, and
