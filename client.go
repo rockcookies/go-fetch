@@ -73,9 +73,6 @@ type (
 	// SuccessHook is a callback for request success.
 	SuccessHook func(*Client, *Response)
 
-	// CloseHook is a callback for client close.
-	CloseHook func()
-
 	// RequestFunc manipulates the Request.
 	RequestFunc func(*Request) *Request
 )
@@ -113,7 +110,6 @@ type Client struct {
 	invalidHooks            []ErrorHook
 	panicHooks              []ErrorHook
 	successHooks            []SuccessHook
-	closeHooks              []CloseHook
 	contentTypeEncoders     map[string]ContentTypeEncoder
 	contentTypeDecoders     map[string]ContentTypeDecoder
 	contentDecompressorKeys []string
@@ -269,18 +265,18 @@ func (c *Client) R() *Request {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	r := &Request{
-		QueryParams:                url.Values{},
-		FormData:                   url.Values{},
-		Header:                     http.Header{},
-		Cookies:                    make([]*http.Cookie, 0),
-		PathParams:                 make(map[string]string),
-		Timeout:                    c.timeout,
-		Debug:                      c.debug,
-		IsTrace:                    c.isTrace,
-		CloseConnection:            c.closeConnection,
-		DoNotParseResponse:         c.notParseResponse,
-		DebugBodyLimit:             c.debugBodyLimit,
-		ResponseBodyLimit:          c.responseBodyLimit,
+		QueryParams:        url.Values{},
+		FormData:           url.Values{},
+		Header:             http.Header{},
+		Cookies:            make([]*http.Cookie, 0),
+		PathParams:         make(map[string]string),
+		Timeout:            c.timeout,
+		Debug:              c.debug,
+		IsTrace:            c.isTrace,
+		CloseConnection:    c.closeConnection,
+		DoNotParseResponse: c.notParseResponse,
+		DebugBodyLimit:     c.debugBodyLimit,
+		ResponseBodyLimit:  c.responseBodyLimit,
 
 		client:           c,
 		baseURL:          c.baseURL,
@@ -376,14 +372,6 @@ func (c *Client) OnPanic(h ErrorHook) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.panicHooks = append(c.panicHooks, h)
-	return c
-}
-
-// OnClose adds a callback for client close.
-func (c *Client) OnClose(h CloseHook) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.closeHooks = append(c.closeHooks, h)
 	return c
 }
 
@@ -776,7 +764,6 @@ func (c *Client) SetTrace(t bool) *Client {
 	return c
 }
 
-
 // Client returns the underlying http.Client.
 func (c *Client) Client() *http.Client {
 	c.lock.RLock()
@@ -813,14 +800,6 @@ func (c *Client) Clone(ctx context.Context) *Client {
 	// certain values need to be reset
 	cc.lock = &sync.RWMutex{}
 	return cc
-}
-
-// Close performs cleanup activities.
-func (c *Client) Close() error {
-	// Execute close hooks first
-	c.onCloseHooks()
-
-	return nil
 }
 
 func (c *Client) executeRequestMiddlewares(req *Request) (err error) {
@@ -946,15 +925,6 @@ func (c *Client) onInvalidHooks(req *Request, err error) {
 	defer c.lock.RUnlock()
 	for _, h := range c.invalidHooks {
 		h(req, err)
-	}
-}
-
-// Helper to run closeHooks hooks.
-func (c *Client) onCloseHooks() {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	for _, h := range c.closeHooks {
-		h()
 	}
 }
 

@@ -935,38 +935,6 @@ func TestClientDebugf(t *testing.T) {
 	})
 }
 
-func TestClientOnClose(t *testing.T) {
-	var hookExecuted bool
-
-	c := dcnl()
-	c.OnClose(func() {
-		hookExecuted = true
-	})
-
-	err := c.Close()
-	assertNil(t, err)
-	assertEqual(t, true, hookExecuted)
-}
-
-func TestClientOnCloseMultipleHooks(t *testing.T) {
-	var executionOrder []string
-
-	c := dcnl()
-	c.OnClose(func() {
-		executionOrder = append(executionOrder, "first")
-	})
-	c.OnClose(func() {
-		executionOrder = append(executionOrder, "second")
-	})
-	c.OnClose(func() {
-		executionOrder = append(executionOrder, "third")
-	})
-
-	err := c.Close()
-	assertNil(t, err)
-	assertEqual(t, []string{"first", "second", "third"}, executionOrder)
-}
-
 func TestClientSetTransport_NilPanic(t *testing.T) {
 	c := New()
 	defer func() {
