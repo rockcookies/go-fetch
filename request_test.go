@@ -934,31 +934,6 @@ func TestRawFileUploadByBody(t *testing.T) {
 	assertEqual(t, "image/png", resp.Request.Header.Get(hdrContentTypeKey))
 }
 
-func TestProxySetting(t *testing.T) {
-	c := dcnl()
-
-	transport, err := c.HTTPTransport()
-
-	assertNil(t, err)
-
-	assertEqual(t, false, c.IsProxySet())
-	assertNotNil(t, transport.Proxy)
-
-	c.SetProxy("http://sampleproxy:8888")
-	assertEqual(t, true, c.IsProxySet())
-	assertNotNil(t, transport.Proxy)
-
-	c.SetProxy("//not.a.user@%66%6f%6f.com:8888")
-	assertEqual(t, true, c.IsProxySet())
-	assertNotNil(t, transport.Proxy)
-
-	c.SetProxy("http://sampleproxy:8888")
-	assertEqual(t, true, c.IsProxySet())
-	c.RemoveProxy()
-	assertNil(t, c.ProxyURL())
-	assertNil(t, transport.Proxy)
-}
-
 func TestGetClient(t *testing.T) {
 	client := New()
 	custom := New()

@@ -42,7 +42,6 @@ const (
 )
 
 var (
-	ErrNotHttpTransportType       = errors.New("resty: not a http.Transport type")
 	ErrUnsupportedRequestBodyKind = errors.New("resty: unsupported request body kind")
 
 	hdrAcceptKey          = http.CanonicalHeaderKey("Accept")
@@ -107,7 +106,6 @@ type Client struct {
 	log                     Logger
 	ctx                     context.Context
 	httpClient              *http.Client
-	proxyURL                *url.URL
 	debugLogFormatter       DebugLogFormatterFunc
 	debugLogCallback        DebugLogCallbackFunc
 	unescapeQueryParams     bool
@@ -647,49 +645,6 @@ func (c *Client) SetRedirectPolicy(policies ...RedirectPolicy) *Client {
 	return c
 }
 
-// ProxyURL returns the proxy URL.
-func (c *Client) ProxyURL() *url.URL {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.proxyURL
-}
-
-// SetProxy sets the proxy URL.
-func (c *Client) SetProxy(proxyURL string) *Client {
-	transport, err := c.HTTPTransport()
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-		return c
-	}
-
-	pURL, err := url.Parse(proxyURL)
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-		return c
-	}
-
-	c.lock.Lock()
-	c.proxyURL = pURL
-	transport.Proxy = http.ProxyURL(c.proxyURL)
-	c.lock.Unlock()
-	return c
-}
-
-// RemoveProxy removes the proxy configuration.
-func (c *Client) RemoveProxy() *Client {
-	transport, err := c.HTTPTransport()
-	if err != nil {
-		c.Logger().Errorf("%v", err)
-		return c
-	}
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.proxyURL = nil
-	transport.Proxy = nil
-	return c
-}
-
 // OutputDirectory returns the output directory.
 func (c *Client) OutputDirectory() string {
 	c.lock.RLock()
@@ -705,16 +660,6 @@ func (c *Client) SetOutputDirectory(dirPath string) *Client {
 	return c
 }
 
-// HTTPTransport returns the http.Transport.
-func (c *Client) HTTPTransport() (*http.Transport, error) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	if transport, ok := c.httpClient.Transport.(*http.Transport); ok {
-		return transport, nil
-	}
-	return nil, ErrNotHttpTransportType
-}
-
 // Transport returns the underlying http.RoundTripper.
 func (c *Client) Transport() http.RoundTripper {
 	c.lock.RLock()
@@ -727,9 +672,10 @@ func (c *Client) Transport() http.RoundTripper {
 func (c *Client) SetTransport(transport http.RoundTripper) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if transport != nil {
-		c.httpClient.Transport = transport
+	if transport == nil {
+		panic("SetTransport: transport cannot be nil")
 	}
+	c.httpClient.Transport = transport
 	return c
 }
 
@@ -875,11 +821,6 @@ func (c *Client) SetResponseBodyUnlimitedReads(b bool) *Client {
 	return c
 }
 
-// IsProxySet returns whether proxy is configured.
-func (c *Client) IsProxySet() bool {
-	return c.ProxyURL() != nil
-}
-
 // Client returns the underlying http.Client.
 func (c *Client) Client() *http.Client {
 	c.lock.RLock()
@@ -905,9 +846,6 @@ func (c *Client) Clone(ctx context.Context) *Client {
 	cc.contentDecompressors = maps.Clone(c.contentDecompressors)
 	copy(cc.contentDecompressorKeys, c.contentDecompressorKeys)
 
-	if c.proxyURL != nil {
-		cc.proxyURL, _ = url.Parse(c.proxyURL.String())
-	}
 	// clone cookies
 	if l := len(c.cookies); l > 0 {
 		cc.cookies = make([]*http.Cookie, 0, l)

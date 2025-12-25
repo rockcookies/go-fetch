@@ -104,27 +104,6 @@ func TestClientTimeoutInternalError(t *testing.T) {
 	_, _ = c.R().Get("http://localhost:9000/set-timeout-test")
 }
 
-func TestClientProxy(t *testing.T) {
-	ts := createGetServer(t)
-	defer ts.Close()
-
-	c := dcnl()
-	c.SetTimeout(1 * time.Second)
-	c.SetProxy("http://sampleproxy:8888")
-
-	resp, err := c.R().Get(ts.URL)
-	assertNotNil(t, resp)
-	assertNotNil(t, err)
-
-	// error
-	c.SetProxy("//not.a.user@%66%6f%6f.com:8888")
-
-	resp, err = c.R().
-		Get(ts.URL)
-	assertNotNil(t, err)
-	assertNotNil(t, resp)
-}
-
 type CustomRoundTripper1 struct{}
 
 // RoundTrip just for test
@@ -179,10 +158,8 @@ func TestClientSetTransport(t *testing.T) {
 		},
 	}
 	client.SetTransport(transport)
-	transportInUse, err := client.HTTPTransport()
 
-	assertNil(t, err)
-	assertEqual(t, true, transport == transportInUse)
+	assertEqual(t, transport, client.Transport())
 }
 
 func TestClientSetScheme(t *testing.T) {
@@ -233,12 +210,6 @@ func TestClientSettingsCoverage(t *testing.T) {
 	// [Start] Custom Transport scenario
 	ct := dcnl()
 	ct.SetTransport(&CustomRoundTripper1{})
-	_, err := ct.HTTPTransport()
-	assertNotNil(t, err)
-	assertEqual(t, ErrNotHttpTransportType, err)
-
-	ct.SetProxy("http://localhost:8080")
-	ct.RemoveProxy()
 
 	ct.outputLogTo(io.Discard)
 	// [End] Custom Transport scenario
@@ -327,19 +298,6 @@ func TestClientPreRequestMiddlewareError(t *testing.T) {
 	assertNotNil(t, err)
 	assertEqual(t, "error from PreRequestMiddleware", err.Error())
 	assertNil(t, resp)
-}
-
-func TestClientRoundTripper(t *testing.T) {
-	c := NewWithClient(&http.Client{})
-	c.outputLogTo(io.Discard)
-
-	rt := &CustomRoundTripper1{}
-	c.SetTransport(rt)
-
-	ct, err := c.HTTPTransport()
-	assertNotNil(t, err)
-	assertNil(t, ct)
-	assertEqual(t, ErrNotHttpTransportType, err)
 }
 
 func TestClientNewRequest(t *testing.T) {
@@ -844,7 +802,6 @@ func TestClientClone(t *testing.T) {
 
 	// set a non-interface field
 	parent.SetBaseURL("http://localhost")
-	parent.SetProxy("http://localhost:8080")
 
 	parent.SetCookie(&http.Cookie{
 		Name:  "go-resty-1",
@@ -1008,4 +965,14 @@ func TestClientOnCloseMultipleHooks(t *testing.T) {
 	err := c.Close()
 	assertNil(t, err)
 	assertEqual(t, []string{"first", "second", "third"}, executionOrder)
+}
+
+func TestClientSetTransport_NilPanic(t *testing.T) {
+	c := New()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("SetTransport(nil) should panic")
+		}
+	}()
+	c.SetTransport(nil)
 }
