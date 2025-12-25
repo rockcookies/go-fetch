@@ -8,3 +8,5 @@
 {"timestamp":"2025-12-25T00:35:00.000Z","event":"Plan Created: remove-allow-method-payload","file":"docs/specs/2025-12-25-remove-allow-method-payload/plan.md","notes":"Remove AllowMethodGetPayload/AllowMethodDeletePayload - 12 tasks"}
 {"timestamp":"2025-12-25T01:04:40.000Z","event":"Design Created: simplify-transport","file":"docs/specs/2025-12-25-simplify-transport/design.md","notes":"Remove TransportSettings and 4 constructors - ~150-200 lines"}
 {"timestamp":"2025-12-25T01:07:50.000Z","event":"Plan Created: simplify-transport","file":"docs/specs/2025-12-25-simplify-transport/plan.md","notes":"Remove TransportSettings and 4 constructors - 23 tasks"}
+{"timestamp":"2025-12-25T02:10:10.000Z","event":"Design Created: remove-curl","file":"docs/specs/2025-12-25-remove-curl/design.md","notes":"Remove all curl command generation and debug logging functionality - ~150-200 lines"}
+{"timestamp":"2025-12-25T02:13:52.000Z","event":"Plan Created: remove-curl","file":"docs/specs/2025-12-25-remove-curl/plan.md","notes":"Remove all curl functionality - 10 tasks"}
