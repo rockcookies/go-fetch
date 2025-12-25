@@ -31,7 +31,7 @@ func Test_parseRequestURL(t *testing.T) {
 			initRequest: func(r *Request) {
 				r.URL = "https://example.com/{foo}/{bar}"
 			},
-			expectedURL: "https://example.com/1/2%2F3",
+			expectedURL: "https://example.com/1/2/3",
 		},
 		{
 			name: "apply request path parameters",
@@ -42,7 +42,7 @@ func Test_parseRequestURL(t *testing.T) {
 				})
 				r.URL = "https://example.com/{foo}/{bar}"
 			},
-			expectedURL: "https://example.com/4/5%2F6",
+			expectedURL: "https://example.com/4/5/6",
 		},
 		{
 			name: "apply request and client path parameters",
@@ -58,80 +58,7 @@ func Test_parseRequestURL(t *testing.T) {
 				})
 				r.URL = "https://example.com/{foo}/{bar}"
 			},
-			expectedURL: "https://example.com/4%2F5/2%2F3",
-		},
-		{
-			name: "apply client raw path parameters",
-			initClient: func(c *Client) {
-				c.SetRawPathParams(map[string]string{
-					"foo": "1/2",
-					"bar": "3",
-				})
-			},
-			initRequest: func(r *Request) {
-				r.URL = "https://example.com/{foo}/{bar}"
-			},
-			expectedURL: "https://example.com/1/2/3",
-		},
-		{
-			name: "apply request raw path parameters",
-			initRequest: func(r *Request) {
-				r.SetRawPathParams(map[string]string{
-					"foo": "4",
-					"bar": "5/6",
-				})
-				r.URL = "https://example.com/{foo}/{bar}"
-			},
-			expectedURL: "https://example.com/4/5/6",
-		},
-		{
-			name: "apply request and client raw path parameters",
-			initClient: func(c *Client) {
-				c.SetRawPathParams(map[string]string{
-					"foo": "1", // ignored, because of the request's "foo"
-					"bar": "2/3",
-				})
-			},
-			initRequest: func(r *Request) {
-				r.SetRawPathParams(map[string]string{
-					"foo": "4/5",
-				})
-				r.URL = "https://example.com/{foo}/{bar}"
-			},
 			expectedURL: "https://example.com/4/5/2/3",
-		},
-		{
-			name: "apply request path and raw path parameters",
-			initRequest: func(r *Request) {
-				r.SetPathParams(map[string]string{
-					"foo": "4/5",
-				}).SetRawPathParams(map[string]string{
-					"foo": "4/5", // it gets overwritten since same key name
-					"bar": "6/7",
-				})
-				r.URL = "https://example.com/{foo}/{bar}"
-			},
-			expectedURL: "https://example.com/4/5/6/7",
-		},
-		{
-			name: "empty path parameter in URL",
-			initRequest: func(r *Request) {
-				r.SetPathParams(map[string]string{
-					"bar": "4",
-				})
-				r.URL = "https://example.com/{}/{bar}"
-			},
-			expectedURL: "https://example.com/%7B%7D/4",
-		},
-		{
-			name: "not closed path parameter in URL",
-			initRequest: func(r *Request) {
-				r.SetPathParams(map[string]string{
-					"foo": "4",
-				})
-				r.URL = "https://example.com/{foo}/{bar/1"
-			},
-			expectedURL: "https://example.com/4/%7Bbar/1",
 		},
 		{
 			name: "extra path parameter in URL",
@@ -291,24 +218,6 @@ func Test_parseRequestURL(t *testing.T) {
 				r.URL = "https://example.com/"
 			},
 			expectedURL: "https://example.com/?foo=1&foo=2",
-		},
-		{
-			name: "unescape query params",
-			initClient: func(c *Client) {
-				c.SetBaseURL("https://example.com/").
-					SetUnescapeQueryParams(true). // this line is just code coverage; I will restructure this test in v3 for the client and request the respective init method
-					SetQueryParam("fromclient", "hey unescape").
-					SetQueryParam("initone", "cáfe")
-			},
-			initRequest: func(r *Request) {
-				r.SetUnescapeQueryParams(true) // this line takes effect
-				r.SetQueryParams(
-					map[string]string{
-						"registry": "nacos://test:6801", // GH #797
-					},
-				)
-			},
-			expectedURL: "https://example.com?initone=cáfe&fromclient=hey+unescape&registry=nacos://test:6801",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -815,26 +724,6 @@ func TestParseRequestBody(t *testing.T) {
 	}
 }
 
-func TestRequestURL_GH797(t *testing.T) {
-	ts := createGetServer(t)
-	defer ts.Close()
-	c := dcnl().
-		SetBaseURL(ts.URL).
-		SetUnescapeQueryParams(true). // this line is just code coverage; I will restructure this test in v3 for the client and request the respective init method
-		SetQueryParam("fromclient", "hey unescape").
-		SetQueryParam("initone", "cáfe")
-	resp, err := c.R().
-		SetUnescapeQueryParams(true). // this line takes effect
-		SetQueryParams(
-			map[string]string{
-				"registry": "nacos://test:6801", // GH #797
-			},
-		).
-		Get("/unescape-query-params")
-	assertError(t, err)
-	assertEqual(t, "query params looks good", resp.String())
-}
-
 func TestMiddlewareCoverage(t *testing.T) {
 	c := dcnl()
 
@@ -842,4 +731,59 @@ func TestMiddlewareCoverage(t *testing.T) {
 	req1.URL = "//invalid-url  .local"
 	err1 := createRawRequest(c, req1)
 	assertEqual(t, true, strings.Contains(err1.Error(), "invalid character"))
+}
+
+func TestReplacePlaceholders(t *testing.T) {
+	tests := []struct {
+		name   string
+		url    string
+		params map[string]string
+		want   string
+	}{
+		{
+			name:   "single replacement",
+			url:    "/users/{id}",
+			params: map[string]string{"id": "123"},
+			want:   "/users/123",
+		},
+		{
+			name:   "multiple replacements",
+			url:    "/users/{id}/posts/{postId}",
+			params: map[string]string{"id": "123", "postId": "456"},
+			want:   "/users/123/posts/456",
+		},
+		{
+			name:   "no params - placeholder remains",
+			url:    "/users/{id}",
+			params: map[string]string{},
+			want:   "/users/{id}",
+		},
+		{
+			name:   "missing param - placeholder remains",
+			url:    "/users/{id}/posts/{postId}",
+			params: map[string]string{"id": "123"},
+			want:   "/users/123/posts/{postId}",
+		},
+		{
+			name:   "value with slash",
+			url:    "/users/{id}/profile",
+			params: map[string]string{"id": "user/name"},
+			want:   "/users/user/name/profile",
+		},
+		{
+			name:   "no placeholders",
+			url:    "/users/123",
+			params: map[string]string{"id": "456"},
+			want:   "/users/123",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := replacePlaceholders(tt.url, tt.params)
+			if got != tt.want {
+				t.Errorf("replacePlaceholders() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }

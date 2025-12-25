@@ -1430,7 +1430,7 @@ func TestPathParamURLInput(t *testing.T) {
 	assertError(t, err)
 	assertEqual(t, http.StatusOK, resp.StatusCode())
 	assertEqual(t, true, strings.Contains(resp.String(), "TestPathParamURLInput: text response"))
-	assertEqual(t, true, strings.Contains(resp.String(), "/v1/users/sample@sample.com/100002/users%2Fdevelopers/https:%2F%2Fexample.com"))
+	assertEqual(t, true, strings.Contains(resp.String(), "/v1/users/sample@sample.com/100002/users/developers/https://example.com"))
 
 	logResponse(t, resp)
 }
@@ -1441,7 +1441,7 @@ func TestRawPathParamURLInput(t *testing.T) {
 
 	c := dcnl().
 		SetBaseURL(ts.URL).
-		SetRawPathParams(map[string]string{
+		SetPathParams(map[string]string{
 			"userId": "sample@sample.com",
 			"path":   "users/developers",
 		})
@@ -1450,7 +1450,7 @@ func TestRawPathParamURLInput(t *testing.T) {
 	assertEqual(t, "users/developers", c.PathParams()["path"])
 
 	resp, err := c.R().SetDebug(true).
-		SetRawPathParams(map[string]string{
+		SetPathParams(map[string]string{
 			"subAccountId": "100002",
 			"website":      "https://example.com",
 		}).Get("/v1/users/{userId}/{subAccountId}/{path}/{website}")
@@ -1818,7 +1818,6 @@ func TestRequestClone(t *testing.T) {
 	// set an non-interface value
 	parent.URL = ts.URL
 	parent.SetPathParam("name", "parent")
-	parent.SetRawPathParam("name", "parent")
 	// set http header
 	parent.SetHeader("X-Header", "parent")
 	// Removed: SetBasicAuth call

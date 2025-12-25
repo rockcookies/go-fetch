@@ -108,7 +108,6 @@ type Client struct {
 	httpClient              *http.Client
 	debugLogFormatter       DebugLogFormatterFunc
 	debugLogCallback        DebugLogCallbackFunc
-	unescapeQueryParams     bool
 	beforeRequest           []RequestMiddleware
 	afterResponse           []ResponseMiddleware
 	errorHooks              []ErrorHook
@@ -285,13 +284,12 @@ func (c *Client) R() *Request {
 		ResponseBodyLimit:          c.responseBodyLimit,
 		ResponseBodyUnlimitedReads: c.resBodyUnlimitedReads,
 
-		client:              c,
-		baseURL:             c.baseURL,
-		multipartFields:     make([]*MultipartField, 0),
-		jsonEscapeHTML:      c.jsonEscapeHTML,
-		log:                 c.log,
-		setContentLength:    c.setContentLength,
-		unescapeQueryParams: c.unescapeQueryParams,
+		client:           c,
+		baseURL:          c.baseURL,
+		multipartFields:  make([]*MultipartField, 0),
+		jsonEscapeHTML:   c.jsonEscapeHTML,
+		log:              c.log,
+		setContentLength: c.setContentLength,
 	}
 
 	if c.ctx != nil {
@@ -721,35 +719,19 @@ func (c *Client) PathParams() map[string]string {
 }
 
 // SetPathParam sets a single URL path parameter.
-// The value will be escaped using url.PathEscape.
 func (c *Client) SetPathParam(param, value string) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.pathParams[param] = url.PathEscape(value)
-	return c
-}
-
-// SetPathParams sets multiple URL path parameters.
-// Values will be escaped using url.PathEscape.
-func (c *Client) SetPathParams(params map[string]string) *Client {
-	for p, v := range params {
-		c.SetPathParam(p, v)
-	}
-	return c
-}
-
-// SetRawPathParam sets a URL path parameter without escaping.
-func (c *Client) SetRawPathParam(param, value string) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.pathParams[param] = value
 	return c
 }
 
-// SetRawPathParams sets multiple URL path parameters without escaping.
-func (c *Client) SetRawPathParams(params map[string]string) *Client {
+// SetPathParams sets multiple URL path parameters.
+func (c *Client) SetPathParams(params map[string]string) *Client {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	for p, v := range params {
-		c.SetRawPathParam(p, v)
+		c.pathParams[p] = v
 	}
 	return c
 }
@@ -793,15 +775,6 @@ func (c *Client) SetTrace(t bool) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.isTrace = t
-	return c
-}
-
-// SetUnescapeQueryParams sets whether to unescape query parameters.
-// NOTE: Request failure is possible with non-standard usage.
-func (c *Client) SetUnescapeQueryParams(unescape bool) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.unescapeQueryParams = unescape
 	return c
 }
 

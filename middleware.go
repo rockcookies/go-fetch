@@ -13,6 +13,15 @@ import (
 	"strings"
 )
 
+// replacePlaceholders replaces {key} with values from params.
+func replacePlaceholders(url string, params map[string]string) string {
+	for key, value := range params {
+		placeholder := "{" + key + "}"
+		url = strings.ReplaceAll(url, placeholder, value)
+	}
+	return url
+}
+
 //‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // Request Middleware(s)
 //_______________________________________________________________________
@@ -38,59 +47,16 @@ func PrepareRequestMiddleware(c *Client, r *Request) (err error) {
 }
 
 func parseRequestURL(c *Client, r *Request) error {
+	// Merge client and request path params
 	if len(c.PathParams())+len(r.PathParams) > 0 {
-		// GitHub #103 Path Params, #663 Raw Path Params
+		// Merge client params (request params take precedence)
 		for p, v := range c.PathParams() {
-			if _, ok := r.PathParams[p]; ok {
-				continue
-			}
-			r.PathParams[p] = v
-		}
-
-		var prev int
-		buf := acquireBuffer()
-		defer releaseBuffer(buf)
-		// search for the next or first opened curly bracket
-		for curr := strings.Index(r.URL, "{"); curr == 0 || curr > prev; curr = prev + strings.Index(r.URL[prev:], "{") {
-			// write everything from the previous position up to the current
-			if curr > prev {
-				buf.WriteString(r.URL[prev:curr])
-			}
-			// search for the closed curly bracket from current position
-			next := curr + strings.Index(r.URL[curr:], "}")
-			// if not found, then write the remainder and exit
-			if next < curr {
-				buf.WriteString(r.URL[curr:])
-				prev = len(r.URL)
-				break
-			}
-			// special case for {}, without parameter's name
-			if next == curr+1 {
-				buf.WriteString("{}")
-			} else {
-				// check for the replacement
-				key := r.URL[curr+1 : next]
-				value, ok := r.PathParams[key]
-				// keep the original string if the replacement not found
-				if !ok {
-					value = r.URL[curr : next+1]
-				}
-				buf.WriteString(value)
-			}
-
-			// set the previous position after the closed curly bracket
-			prev = next + 1
-			if prev >= len(r.URL) {
-				break
+			if _, ok := r.PathParams[p]; !ok {
+				r.PathParams[p] = v
 			}
 		}
-		if buf.Len() > 0 {
-			// write remainder
-			if prev < len(r.URL) {
-				buf.WriteString(r.URL[prev:])
-			}
-			r.URL = buf.String()
-		}
+		// Replace placeholders
+		r.URL = replacePlaceholders(r.URL, r.PathParams)
 	}
 
 	// Parsing request URL
@@ -138,15 +104,6 @@ func parseRequestURL(c *Client, r *Request) error {
 		} else {
 			reqURL.RawQuery = reqURL.RawQuery + "&" + r.QueryParams.Encode()
 		}
-	}
-
-	// GH#797 Unescape query parameters (non-standard - not recommended)
-	if r.unescapeQueryParams && len(reqURL.RawQuery) > 0 {
-		// at this point, all errors caught up in the above operations
-		// so ignore the return error on query unescape; I realized
-		// while writing the unit test
-		unescapedQuery, _ := url.QueryUnescape(reqURL.RawQuery)
-		reqURL.RawQuery = strings.ReplaceAll(unescapedQuery, " ", "+") // otherwise request becomes bad request
 	}
 
 	r.URL = reqURL.String()

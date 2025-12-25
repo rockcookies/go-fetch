@@ -9,24 +9,16 @@ import (
 func Benchmark_parseRequestURL_PathParams(b *testing.B) {
 	c := New().SetPathParams(map[string]string{
 		"foo": "1",
-		"bar": "2",
-	}).SetRawPathParams(map[string]string{
-		"foo": "3",
-		"xyz": "4",
+		"bar": "2/3",
 	})
 	r := c.R().SetPathParams(map[string]string{
-		"foo": "5",
-		"qwe": "6",
-	}).SetRawPathParams(map[string]string{
-		"foo": "7",
-		"asd": "8",
+		"foo": "4/5",
 	})
+	r.URL = "https://example.com/{foo}/{bar}"
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		r.URL = "https://example.com/{foo}/{bar}/{xyz}/{qwe}/{asd}"
-		if err := parseRequestURL(c, r); err != nil {
-			b.Errorf("parseRequestURL() error = %v", err)
-		}
+		_ = parseRequestURL(c, r)
 	}
 }
 

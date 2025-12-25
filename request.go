@@ -47,22 +47,21 @@ type Request struct {
 	IsDone                     bool
 	Timeout                    time.Duration
 
-	isMultiPart         bool
-	isFormData          bool
-	setContentLength    bool
-	jsonEscapeHTML      bool
-	ctx                 context.Context
-	ctxCancelFunc       context.CancelFunc
-	values              map[string]any
-	client              *Client
-	bodyBuf             *bytes.Buffer
-	trace               *clientTrace
-	log                 Logger
-	baseURL             string
-	multipartBoundary   string
-	multipartFields     []*MultipartField
-	unescapeQueryParams bool
-	multipartErrChan    chan error
+	isMultiPart       bool
+	isFormData        bool
+	setContentLength  bool
+	jsonEscapeHTML    bool
+	ctx               context.Context
+	ctxCancelFunc     context.CancelFunc
+	values            map[string]any
+	client            *Client
+	bodyBuf           *bytes.Buffer
+	trace             *clientTrace
+	log               Logger
+	baseURL           string
+	multipartBoundary string
+	multipartFields   []*MultipartField
+	multipartErrChan  chan error
 }
 
 // SetMethod sets the HTTP method.
@@ -320,32 +319,16 @@ func (r *Request) SetResponseBodyUnlimitedReads(b bool) *Request {
 	return r
 }
 
-// SetPathParam sets a single URL path parameter.
-// The value will be escaped using url.PathEscape.
+// SetPathParam sets a single URL path parameter (replaces {key} in URL).
 func (r *Request) SetPathParam(param, value string) *Request {
-	r.PathParams[param] = url.PathEscape(value)
-	return r
-}
-
-// SetPathParams sets multiple URL path parameters.
-// Values will be escaped using url.PathEscape.
-func (r *Request) SetPathParams(params map[string]string) *Request {
-	for p, v := range params {
-		r.SetPathParam(p, v)
-	}
-	return r
-}
-
-// SetRawPathParam sets a URL path parameter without escaping.
-func (r *Request) SetRawPathParam(param, value string) *Request {
 	r.PathParams[param] = value
 	return r
 }
 
-// SetRawPathParams sets multiple URL path parameters without escaping.
-func (r *Request) SetRawPathParams(params map[string]string) *Request {
+// SetPathParams sets multiple URL path parameters.
+func (r *Request) SetPathParams(params map[string]string) *Request {
 	for p, v := range params {
-		r.SetRawPathParam(p, v)
+		r.PathParams[p] = v
 	}
 	return r
 }
@@ -394,6 +377,7 @@ func (r *Request) SetLogger(l Logger) *Request {
 	r.log = l
 	return r
 }
+
 // SetDebug enables debug mode for logging request and response details.
 func (r *Request) SetDebug(d bool) *Request {
 	r.Debug = d
@@ -409,13 +393,6 @@ func (r *Request) SetDebug(d bool) *Request {
 // SetTrace turns on/off the trace capability at the request level.
 func (r *Request) SetTrace(t bool) *Request {
 	r.IsTrace = t
-	return r
-}
-
-// SetUnescapeQueryParams sets whether to unescape query parameters.
-// NOTE: Request failure is possible with non-standard usage.
-func (r *Request) SetUnescapeQueryParams(unescape bool) *Request {
-	r.unescapeQueryParams = unescape
 	return r
 }
 
