@@ -33,7 +33,6 @@ func TestGetMethodWhenResponseIsNull(t *testing.T) {
 	resp, err := client.R().SetBody("{}").
 		SetHeader("Content-Type", "application/json; charset=utf-8").
 		SetForceResponseContentType("application/json").
-		SetAllowMethodGetPayload(true).
 		SetResponseBodyUnlimitedReads(true).
 		SetResult(&x).
 		Get(server.URL + "/test")

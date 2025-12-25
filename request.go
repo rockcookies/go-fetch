@@ -51,8 +51,6 @@ type Request struct {
 	ResponseBodyLimit          int64
 	ResponseBodyUnlimitedReads bool
 	IsTrace                    bool
-	AllowMethodGetPayload      bool
-	AllowMethodDeletePayload   bool
 	IsDone                     bool
 	Timeout                    time.Duration
 
@@ -928,30 +926,6 @@ func (r *Request) SetUnescapeQueryParams(unescape bool) *Request {
 	return r
 }
 
-// SetAllowMethodGetPayload method allows the GET method with payload on the request level.
-// By default, Resty does not allow.
-//
-//	client.R().SetAllowMethodGetPayload(true)
-//
-// It overrides the option set by the [Client.SetAllowMethodGetPayload]
-func (r *Request) SetAllowMethodGetPayload(allow bool) *Request {
-	r.AllowMethodGetPayload = allow
-	return r
-}
-
-// SetAllowMethodDeletePayload method allows the DELETE method with payload on the request level.
-// By default, Resty does not allow.
-//
-//	client.R().SetAllowMethodDeletePayload(true)
-//
-// More info, refer to GH#881
-//
-// It overrides the option set by the [Client.SetAllowMethodDeletePayload]
-func (r *Request) SetAllowMethodDeletePayload(allow bool) *Request {
-	r.AllowMethodDeletePayload = allow
-	return r
-}
-
 // TraceInfo method returns the trace info for the request.
 // If either the [Client.EnableTrace] or [Request.EnableTrace] function has not been called
 // before the request is made, an empty [resty.TraceInfo] object is returned.
@@ -1332,20 +1306,11 @@ func (r *Request) isPayloadSupported() bool {
 		r.Method = MethodGet
 	}
 
-	if r.Method == MethodGet && r.AllowMethodGetPayload {
-		return true
-	}
-
-	// More info, refer to GH#881
-	if r.Method == MethodDelete && r.AllowMethodDeletePayload {
-		return true
-	}
-
-	if r.Method == MethodPost || r.Method == MethodPut || r.Method == MethodPatch {
-		return true
-	}
-
-	return false
+	return r.Method == MethodGet ||
+		r.Method == MethodDelete ||
+		r.Method == MethodPost ||
+		r.Method == MethodPut ||
+		r.Method == MethodPatch
 }
 
 func (r *Request) withTimeout() *http.Request {

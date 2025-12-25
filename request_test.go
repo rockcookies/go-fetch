@@ -1921,57 +1921,45 @@ func TestRequestAllowPayload(t *testing.T) {
 
 	t.Run("default method is GET", func(t *testing.T) {
 		r := c.R()
-		result1 := r.isPayloadSupported()
-		assertEqual(t, false, result1)
-
-		r.SetAllowMethodGetPayload(true)
-		result2 := r.isPayloadSupported()
-		assertEqual(t, true, result2)
+		result := r.isPayloadSupported()
+		assertEqual(t, true, result)
 	})
 
 	t.Run("method GET", func(t *testing.T) {
 		r := c.R().
 			SetMethod(MethodGet)
 
-		result1 := r.isPayloadSupported()
-		assertEqual(t, false, result1)
-
-		r.SetAllowMethodGetPayload(true)
-		result2 := r.isPayloadSupported()
-		assertEqual(t, true, result2)
+		result := r.isPayloadSupported()
+		assertEqual(t, true, result)
 	})
 
 	t.Run("method POST", func(t *testing.T) {
 		r := c.R().
 			SetMethod(MethodPost)
-		result1 := r.isPayloadSupported()
-		assertEqual(t, true, result1)
+		result := r.isPayloadSupported()
+		assertEqual(t, true, result)
 	})
 
 	t.Run("method PUT", func(t *testing.T) {
 		r := c.R().
 			SetMethod(MethodPut)
-		result1 := r.isPayloadSupported()
-		assertEqual(t, true, result1)
+		result := r.isPayloadSupported()
+		assertEqual(t, true, result)
 	})
 
 	t.Run("method PATCH", func(t *testing.T) {
 		r := c.R().
 			SetMethod(MethodPatch)
-		result1 := r.isPayloadSupported()
-		assertEqual(t, true, result1)
+		result := r.isPayloadSupported()
+		assertEqual(t, true, result)
 	})
 
 	t.Run("method DELETE", func(t *testing.T) {
 		r := c.R().
 			SetMethod(MethodDelete)
 
-		result1 := r.isPayloadSupported()
-		assertEqual(t, false, result1)
-
-		r.SetAllowMethodDeletePayload(true)
-		result2 := r.isPayloadSupported()
-		assertEqual(t, true, result2)
+		result := r.isPayloadSupported()
+		assertEqual(t, true, result)
 	})
 
 	t.Run("method HEAD", func(t *testing.T) {

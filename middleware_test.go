@@ -488,26 +488,6 @@ func TestParseRequestBody(t *testing.T) {
 				r.SetBody("foo")
 				r.Method = http.MethodGet
 			},
-		},
-		{
-			name: "string body with GET method and AllowMethodGetPayload by client",
-			initClient: func(c *Client) {
-				c.SetAllowMethodGetPayload(true)
-			},
-			initRequest: func(r *Request) {
-				r.SetBody("foo")
-				r.Method = http.MethodGet
-			},
-			expectedBodyBuf:     []byte("foo"),
-			expectedContentType: plainTextType,
-		},
-		{
-			name: "string body with GET method and AllowMethodGetPayload by request",
-			initRequest: func(r *Request) {
-				r.SetAllowMethodGetPayload(true)
-				r.SetBody("foo")
-				r.Method = http.MethodGet
-			},
 			expectedBodyBuf:     []byte("foo"),
 			expectedContentType: plainTextType,
 		},
@@ -555,16 +535,6 @@ func TestParseRequestBody(t *testing.T) {
 		{
 			name: "string body with DELETE method",
 			initRequest: func(r *Request) {
-				r.SetBody("foo")
-				r.Method = http.MethodDelete
-			},
-			expectedBodyBuf:     nil,
-			expectedContentType: "",
-		},
-		{
-			name: "string body with DELETE method with AllowMethodDeletePayload by request",
-			initRequest: func(r *Request) {
-				r.SetAllowMethodDeletePayload(true)
 				r.SetBody("foo")
 				r.Method = http.MethodDelete
 			},
