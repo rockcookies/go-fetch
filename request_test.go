@@ -11,6 +11,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1619,9 +1620,13 @@ func TestTraceInfoWithoutEnableTrace(t *testing.T) {
 }
 
 func TestTraceInfoOnTimeout(t *testing.T) {
-	client := NewWithTransportSettings(&TransportSettings{
-		DialerTimeout: 100 * time.Millisecond,
-	}).
+	dialer := &net.Dialer{
+		Timeout: 100 * time.Millisecond,
+	}
+	transport := &http.Transport{
+		DialContext: dialer.DialContext,
+	}
+	client := NewWithTransport(transport).
 		SetBaseURL("http://resty-nowhere.local").
 		SetTrace(true)
 

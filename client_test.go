@@ -510,21 +510,19 @@ func TestCustomTransportSettings(t *testing.T) {
 	ts := createGetServer(t)
 	defer ts.Close()
 
-	customTransportSettings := &TransportSettings{
-		DialerTimeout:          30 * time.Second,
-		DialerKeepAlive:        15 * time.Second,
-		IdleConnTimeout:        120 * time.Second,
-		TLSHandshakeTimeout:    20 * time.Second,
-		ExpectContinueTimeout:  1 * time.Second,
+	customTransport := &http.Transport{
 		MaxIdleConns:           50,
 		MaxIdleConnsPerHost:    3,
 		MaxConnsPerHost:        100,
+		IdleConnTimeout:        120 * time.Second,
+		TLSHandshakeTimeout:    20 * time.Second,
+		ExpectContinueTimeout:  1 * time.Second,
 		ResponseHeaderTimeout:  10 * time.Second,
 		MaxResponseHeaderBytes: 1 << 10,
 		WriteBufferSize:        2 << 10,
 		ReadBufferSize:         2 << 10,
 	}
-	client := NewWithTransportSettings(customTransportSettings)
+	client := NewWithTransport(customTransport)
 	client.SetBaseURL(ts.URL)
 
 	resp, err := client.R().Get("/")
@@ -537,7 +535,7 @@ func TestDefaultDialerTransportSettings(t *testing.T) {
 	defer ts.Close()
 
 	t.Run("transport-default", func(t *testing.T) {
-		client := NewWithTransportSettings(nil)
+		client := New()
 		client.SetBaseURL(ts.URL)
 
 		resp, err := client.R().Get("/")
@@ -546,7 +544,7 @@ func TestDefaultDialerTransportSettings(t *testing.T) {
 	})
 
 	t.Run("dialer-transport-default", func(t *testing.T) {
-		client := NewWithDialerAndTransportSettings(nil, nil)
+		client := NewWithTransport(nil)
 		client.SetBaseURL(ts.URL)
 
 		resp, err := client.R().Get("/")
@@ -555,33 +553,54 @@ func TestDefaultDialerTransportSettings(t *testing.T) {
 	})
 }
 
-func TestNewWithDialer(t *testing.T) {
+func TestNewWithTransport(t *testing.T) {
 	ts := createGetServer(t)
 	defer ts.Close()
 
-	dialer := &net.Dialer{
-		Timeout:   15 * time.Second,
-		KeepAlive: 15 * time.Second,
-	}
-	client := NewWithDialer(dialer)
-	client.SetBaseURL(ts.URL)
+	t.Run("nil transport uses default", func(t *testing.T) {
+		client := NewWithTransport(nil)
+		client.SetBaseURL(ts.URL)
 
-	resp, err := client.R().Get("/")
-	assertNil(t, err)
-	assertEqual(t, "TestGet: text response", resp.String())
-}
+		resp, err := client.R().Get("/")
+		assertNil(t, err)
+		assertEqual(t, "TestGet: text response", resp.String())
 
-func TestNewWithLocalAddr(t *testing.T) {
-	ts := createGetServer(t)
-	defer ts.Close()
+		// Verify default transport is used
+		assertEqual(t, http.DefaultTransport, client.httpClient.Transport)
+	})
 
-	localAddress, _ := net.ResolveTCPAddr("tcp", "127.0.0.1")
-	client := NewWithLocalAddr(localAddress)
-	client.SetBaseURL(ts.URL)
+	t.Run("custom transport is used", func(t *testing.T) {
+		customTransport := &http.Transport{
+			MaxIdleConns:        50,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     60 * time.Second,
+		}
+		client := NewWithTransport(customTransport)
+		client.SetBaseURL(ts.URL)
 
-	resp, err := client.R().Get("/")
-	assertNil(t, err)
-	assertEqual(t, "TestGet: text response", resp.String())
+		resp, err := client.R().Get("/")
+		assertNil(t, err)
+		assertEqual(t, "TestGet: text response", resp.String())
+
+		// Verify custom transport is used
+		assertEqual(t, customTransport, client.httpClient.Transport)
+	})
+
+	t.Run("custom transport with specific settings", func(t *testing.T) {
+		customTransport := &http.Transport{
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   20,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+		client := NewWithTransport(customTransport)
+		client.SetBaseURL(ts.URL)
+
+		resp, err := client.R().Get("/")
+		assertNil(t, err)
+		assertEqual(t, "TestGet: text response", resp.String())
+	})
 }
 
 func TestClientOnResponseError(t *testing.T) {
