@@ -10,3 +10,5 @@
 {"timestamp":"2025-12-25T01:07:50.000Z","event":"Plan Created: simplify-transport","file":"docs/specs/2025-12-25-simplify-transport/plan.md","notes":"Remove TransportSettings and 4 constructors - 23 tasks"}
 {"timestamp":"2025-12-25T02:10:10.000Z","event":"Design Created: remove-curl","file":"docs/specs/2025-12-25-remove-curl/design.md","notes":"Remove all curl command generation and debug logging functionality - ~150-200 lines"}
 {"timestamp":"2025-12-25T02:13:52.000Z","event":"Plan Created: remove-curl","file":"docs/specs/2025-12-25-remove-curl/plan.md","notes":"Remove all curl functionality - 10 tasks"}
+{"timestamp":"2025-12-25T03:01:10.000Z","event":"Design Created: simplify-comments","file":"docs/specs/2025-12-25-simplify-comments/design.md","notes":"Remove copyright headers and simplify method comments - ~200-300 lines"}
+{"timestamp":"2025-12-25T03:04:00.000Z","event":"Plan Created: simplify-comments","file":"docs/specs/2025-12-25-simplify-comments/plan.md","notes":"21 tasks - remove copyright headers and simplify comments across all Go files"}
