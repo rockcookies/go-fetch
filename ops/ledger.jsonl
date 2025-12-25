@@ -6,3 +6,5 @@
 {"timestamp":"2025-12-24T14:53:30.000Z","event":"Plan Created: remove-tlsconfig","file":"docs/specs/2025-12-24-remove-tlsconfig/plan.md","notes":"Remove TLSClientConfiger interface and related methods - 12 tasks"}
 {"timestamp":"2025-12-25T00:30:35.000Z","event":"Design Created: remove-allow-method-payload","file":"docs/specs/2025-12-25-remove-allow-method-payload/design.md","notes":"Remove AllowMethodGetPayload/AllowMethodDeletePayload functionality - ~150-200 lines"}
 {"timestamp":"2025-12-25T00:35:00.000Z","event":"Plan Created: remove-allow-method-payload","file":"docs/specs/2025-12-25-remove-allow-method-payload/plan.md","notes":"Remove AllowMethodGetPayload/AllowMethodDeletePayload - 12 tasks"}
+{"timestamp":"2025-12-25T01:04:40.000Z","event":"Design Created: simplify-transport","file":"docs/specs/2025-12-25-simplify-transport/design.md","notes":"Remove TransportSettings and 4 constructors - ~150-200 lines"}
+{"timestamp":"2025-12-25T01:07:50.000Z","event":"Plan Created: simplify-transport","file":"docs/specs/2025-12-25-simplify-transport/plan.md","notes":"Remove TransportSettings and 4 constructors - 23 tasks"}
