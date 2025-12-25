@@ -219,11 +219,15 @@ func handleMultipart(c *Client, r *Request) error {
 		// set boundary if it is provided by the user
 		if !isStringEmpty(r.multipartBoundary) {
 			if err := mw.SetBoundary(r.multipartBoundary); err != nil {
+				releaseBuffer(r.bodyBuf)
+				r.bodyBuf = nil
 				return err
 			}
 		}
 
 		if err := r.writeFormData(mw); err != nil {
+			releaseBuffer(r.bodyBuf)
+			r.bodyBuf = nil
 			return err
 		}
 

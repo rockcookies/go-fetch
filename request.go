@@ -23,28 +23,28 @@ import (
 
 // Request represents an HTTP request.
 type Request struct {
-	URL                        string
-	Method                     string
-	QueryParams                url.Values
-	FormData                   url.Values
-	PathParams                 map[string]string
-	Header                     http.Header
-	Time                       time.Time
-	Body                       any
-	Result                     any
-	Error                      any
-	RawRequest                 *http.Request
-	Cookies                    []*http.Cookie
-	Debug                      bool
-	CloseConnection            bool
-	DoNotParseResponse         bool
-	ExpectResponseContentType  string
-	ForceResponseContentType   string
-	DebugBodyLimit             int
-	ResponseBodyLimit          int64
-	IsTrace                    bool
-	IsDone                     bool
-	Timeout                    time.Duration
+	URL                       string
+	Method                    string
+	QueryParams               url.Values
+	FormData                  url.Values
+	PathParams                map[string]string
+	Header                    http.Header
+	Time                      time.Time
+	Body                      any
+	Result                    any
+	Error                     any
+	RawRequest                *http.Request
+	Cookies                   []*http.Cookie
+	Debug                     bool
+	CloseConnection           bool
+	DoNotParseResponse        bool
+	ExpectResponseContentType string
+	ForceResponseContentType  string
+	DebugBodyLimit            int
+	ResponseBodyLimit         int64
+	IsTrace                   bool
+	IsDone                    bool
+	Timeout                   time.Duration
 
 	isMultiPart       bool
 	isFormData        bool
@@ -310,7 +310,6 @@ func (r *Request) SetResponseBodyLimit(v int64) *Request {
 	r.ResponseBodyLimit = v
 	return r
 }
-
 
 // SetPathParam sets a single URL path parameter (replaces {key} in URL).
 func (r *Request) SetPathParam(param, value string) *Request {
@@ -740,5 +739,5 @@ func jsonIndent(v []byte) []byte {
 	if err := json.Indent(buf, v, "", "   "); err != nil {
 		return v
 	}
-	return buf.Bytes()
+	return append([]byte{}, buf.Bytes()...)
 }

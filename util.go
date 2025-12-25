@@ -168,12 +168,8 @@ func functionName(i any) string {
 
 func acquireBuffer() *bytes.Buffer {
 	buf := bufPool.Get().(*bytes.Buffer)
-	if buf.Len() == 0 {
-		buf.Reset()
-		return buf
-	}
-	bufPool.Put(buf)
-	return new(bytes.Buffer)
+	buf.Reset()
+	return buf
 }
 
 func releaseBuffer(buf *bytes.Buffer) {
