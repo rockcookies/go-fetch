@@ -4,3 +4,5 @@
 {"timestamp":"2025-12-24T08:10:00.000Z","event":"Plan Created: further-simplify","file":"docs/specs/2025-12-24-further-simplify/plan.md","notes":"Remove SaveResponse, Retry, Digest Auth, Auth/Credentials - 30 tasks"}
 {"timestamp":"2025-12-24T14:53:00.000Z","event":"Design Created: remove-tlsconfig","file":"docs/specs/2025-12-24-remove-tlsconfig/design.md","notes":"Remove TLSClientConfiger interface and related methods - ~150 lines"}
 {"timestamp":"2025-12-24T14:53:30.000Z","event":"Plan Created: remove-tlsconfig","file":"docs/specs/2025-12-24-remove-tlsconfig/plan.md","notes":"Remove TLSClientConfiger interface and related methods - 12 tasks"}
+{"timestamp":"2025-12-25T00:30:35.000Z","event":"Design Created: remove-allow-method-payload","file":"docs/specs/2025-12-25-remove-allow-method-payload/design.md","notes":"Remove AllowMethodGetPayload/AllowMethodDeletePayload functionality - ~150-200 lines"}
+{"timestamp":"2025-12-25T00:35:00.000Z","event":"Plan Created: remove-allow-method-payload","file":"docs/specs/2025-12-25-remove-allow-method-payload/plan.md","notes":"Remove AllowMethodGetPayload/AllowMethodDeletePayload - 12 tasks"}
