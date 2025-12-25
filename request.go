@@ -42,7 +42,6 @@ type Request struct {
 	ForceResponseContentType   string
 	DebugBodyLimit             int
 	ResponseBodyLimit          int64
-	ResponseBodyUnlimitedReads bool
 	IsTrace                    bool
 	IsDone                     bool
 	Timeout                    time.Duration
@@ -200,13 +199,13 @@ func (r *Request) SetBody(body any) *Request {
 	return r
 }
 
-// SetResult registers the response object for automatic unmarshalling.
+// SetResult registers the response object for automatic unmarshaling.
 func (r *Request) SetResult(v any) *Request {
 	r.Result = getPointer(v)
 	return r
 }
 
-// SetError registers the error object for automatic unmarshalling.
+// SetError registers the error object for automatic unmarshaling.
 func (r *Request) SetError(err any) *Request {
 	r.Error = getPointer(err)
 	return r
@@ -312,12 +311,6 @@ func (r *Request) SetResponseBodyLimit(v int64) *Request {
 	return r
 }
 
-// SetResponseBodyUnlimitedReads enables unlimited response body reads.
-// NOTE: Keeps response body in memory. Also works in debug mode.
-func (r *Request) SetResponseBodyUnlimitedReads(b bool) *Request {
-	r.ResponseBodyUnlimitedReads = b
-	return r
-}
 
 // SetPathParam sets a single URL path parameter (replaces {key} in URL).
 func (r *Request) SetPathParam(param, value string) *Request {
@@ -333,13 +326,13 @@ func (r *Request) SetPathParams(params map[string]string) *Request {
 	return r
 }
 
-// SetExpectResponseContentType sets the fallback Content-Type for automatic unmarshalling.
+// SetExpectResponseContentType sets the fallback Content-Type for automatic unmarshaling.
 func (r *Request) SetExpectResponseContentType(contentType string) *Request {
 	r.ExpectResponseContentType = contentType
 	return r
 }
 
-// SetForceResponseContentType sets a forced Content-Type for automatic unmarshalling.
+// SetForceResponseContentType sets a forced Content-Type for automatic unmarshaling.
 // Takes priority over the response Content-Type header.
 func (r *Request) SetForceResponseContentType(contentType string) *Request {
 	r.ForceResponseContentType = contentType

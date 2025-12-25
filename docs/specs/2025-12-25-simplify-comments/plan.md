@@ -542,11 +542,11 @@ To:
 
 Change line 620 from:
 ```go
-// SetError registers the common error object for automatic unmarshalling.
+// SetError registers the common error object for automatic unmarshaling.
 ```
 To:
 ```go
-// SetError registers the error object for automatic unmarshalling.
+// SetError registers the error object for automatic unmarshaling.
 ```
 
 Change line 636-644 SetRedirectPolicy - Keep as-is with usage examples (they help explain redirect policies)

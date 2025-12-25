@@ -94,7 +94,6 @@ type Client struct {
 	disableWarn             bool
 	timeout                 time.Duration
 	responseBodyLimit       int64
-	resBodyUnlimitedReads   bool
 	jsonEscapeHTML          bool
 	setContentLength        bool
 	closeConnection         bool
@@ -282,7 +281,6 @@ func (c *Client) R() *Request {
 		DoNotParseResponse:         c.notParseResponse,
 		DebugBodyLimit:             c.debugBodyLimit,
 		ResponseBodyLimit:          c.responseBodyLimit,
-		ResponseBodyUnlimitedReads: c.resBodyUnlimitedReads,
 
 		client:           c,
 		baseURL:          c.baseURL,
@@ -611,7 +609,7 @@ func (c *Client) Error() reflect.Type {
 	return c.errorType
 }
 
-// SetError registers the common error object for automatic unmarshalling.
+// SetError registers the common error object for automatic unmarshaling.
 func (c *Client) SetError(v any) *Client {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -778,21 +776,6 @@ func (c *Client) SetTrace(t bool) *Client {
 	return c
 }
 
-// ResponseBodyUnlimitedReads returns the unlimited reads status.
-func (c *Client) ResponseBodyUnlimitedReads() bool {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.resBodyUnlimitedReads
-}
-
-// SetResponseBodyUnlimitedReads enables unlimited response body reads.
-// NOTE: Keeps response body in memory. Also works in debug mode.
-func (c *Client) SetResponseBodyUnlimitedReads(b bool) *Client {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.resBodyUnlimitedReads = b
-	return c
-}
 
 // Client returns the underlying http.Client.
 func (c *Client) Client() *http.Client {
@@ -885,7 +868,7 @@ func (c *Client) execute(req *Request) (*Response, error) {
 	}
 
 	if !req.DoNotParseResponse {
-		if req.ResponseBodyUnlimitedReads || req.Debug {
+		if req.Debug {
 			response.wrapCopyReadCloser()
 
 			if err = response.readAll(); err != nil {

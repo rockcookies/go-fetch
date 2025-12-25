@@ -1857,30 +1857,28 @@ func TestRequestClone(t *testing.T) {
 	assertNotEqual(t, parent.RawRequest, clone.RawRequest)
 }
 
-func TestResponseBodyUnlimitedReads(t *testing.T) {
+func TestResponseBodyMultipleReads(t *testing.T) {
 	ts := createPostServer(t)
 	defer ts.Close()
 
 	user := &testUser{Username: "testuser", Password: "testpass"}
 
-	c := dcnl().
-		SetJSONEscapeHTML(false).
-		SetResponseBodyUnlimitedReads(true)
-
-	assertEqual(t, true, c.ResponseBodyUnlimitedReads())
+	c := dcnl().SetJSONEscapeHTML(false)
 
 	resp, err := c.R().
 		SetHeader(hdrContentTypeKey, "application/json; charset=utf-8").
 		SetBody(user).
-		SetResult(&AuthSuccess{}).
 		Post(ts.URL + "/login")
 
 	assertError(t, err)
 	assertEqual(t, http.StatusOK, resp.StatusCode())
 	assertEqual(t, int64(50), resp.Size())
 
-	t.Logf("Result Success: %q", resp.Result().(*AuthSuccess))
+	// Call String() to trigger body read into memory
+	bodyStr := resp.String()
+	t.Logf("Response Body: %s", bodyStr)
 
+	// Verify multiple reads work via nopReadCloser's resetOnEOF behavior
 	for i := 1; i <= 5; i++ {
 		b, err := io.ReadAll(resp.Body)
 		assertNil(t, err)
@@ -2089,13 +2087,6 @@ func TestRequestSettingsCoverage(t *testing.T) {
 	assertEqual(t, true, r2.IsTrace)
 	r2.SetTrace(false)
 	assertEqual(t, false, r2.IsTrace)
-
-	r3 := c.R()
-	assertEqual(t, false, r3.ResponseBodyUnlimitedReads)
-	r3.SetResponseBodyUnlimitedReads(true)
-	assertEqual(t, true, r3.ResponseBodyUnlimitedReads)
-	r3.SetResponseBodyUnlimitedReads(false)
-	assertEqual(t, false, r3.ResponseBodyUnlimitedReads)
 
 	r4 := c.R()
 	assertEqual(t, false, r4.Debug)

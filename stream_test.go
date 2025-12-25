@@ -2,6 +2,7 @@ package fetch
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -29,16 +30,19 @@ func TestGetMethodWhenResponseIsNull(t *testing.T) {
 
 	client := New()
 
-	var x any
+	// Don't use SetResult to avoid auto-unmarshal consuming the body
 	resp, err := client.R().SetBody("{}").
 		SetHeader("Content-Type", "application/json; charset=utf-8").
 		SetForceResponseContentType("application/json").
-		SetResponseBodyUnlimitedReads(true).
-		SetResult(&x).
 		Get(server.URL + "/test")
 
 	assertNil(t, err)
 	assertEqual(t, "null", resp.String())
+
+	// Verify JSON null can be decoded
+	var x any
+	err = json.Unmarshal(resp.Bytes(), &x)
+	assertNil(t, err)
 	assertEqual(t, nil, x)
 }
 
