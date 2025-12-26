@@ -13,12 +13,21 @@ import (
 	"strings"
 )
 
-// replacePlaceholders replaces {key} with values from params.
-func replacePlaceholders(url string, params map[string]string) string {
-	for key, value := range params {
-		placeholder := "{" + key + "}"
-		url = strings.ReplaceAll(url, placeholder, value)
+// replacePathParams replaces {key} with values from params.
+func replacePathParams(url string, params ...map[string]string) string {
+	replaced := make(map[string]struct{})
+
+	for _, p := range params {
+		for key, value := range p {
+			if _, ok := replaced[key]; ok {
+				continue
+			}
+			replaced[key] = struct{}{}
+			placeholder := "{" + key + "}"
+			url = strings.ReplaceAll(url, placeholder, value)
+		}
 	}
+
 	return url
 }
 
@@ -48,16 +57,7 @@ func PrepareRequestMiddleware(c *Client, r *Request) (err error) {
 
 func parseRequestURL(c *Client, r *Request) error {
 	// Merge client and request path params
-	if len(c.PathParams())+len(r.PathParams) > 0 {
-		// Merge client params (request params take precedence)
-		for p, v := range c.PathParams() {
-			if _, ok := r.PathParams[p]; !ok {
-				r.PathParams[p] = v
-			}
-		}
-		// Replace placeholders
-		r.URL = replacePlaceholders(r.URL, r.PathParams)
-	}
+	r.URL = replacePathParams(r.URL, r.PathParams, c.PathParams())
 
 	// Parsing request URL
 	reqURL, err := url.Parse(r.URL)
@@ -81,29 +81,23 @@ func parseRequestURL(c *Client, r *Request) error {
 		}
 	}
 
-	// GH #407 && #318
+	// Scheme from Client if not present in Request URL
 	if reqURL.Scheme == "" && len(c.Scheme()) > 0 {
 		reqURL.Scheme = c.Scheme()
 	}
 
 	// Adding Query Param
-	if len(c.QueryParams())+len(r.QueryParams) > 0 {
-		for k, v := range c.QueryParams() {
-			if _, ok := r.QueryParams[k]; ok {
-				continue
-			}
-			r.QueryParams[k] = v[:]
-		}
-
-		// GitHub #123 Preserve query string order partially.
-		// Since not feasible in `SetQuery*` resty methods, because
-		// standard package `url.Encode(...)` sorts the query params
-		// alphabetically
-		if isStringEmpty(reqURL.RawQuery) {
-			reqURL.RawQuery = r.QueryParams.Encode()
-		} else {
-			reqURL.RawQuery = reqURL.RawQuery + "&" + r.QueryParams.Encode()
-		}
+	query := url.Values{}
+	for k, v := range c.QueryParams() {
+		query[k] = v[:]
+	}
+	for k, v := range r.QueryParams {
+		query[k] = v[:]
+	}
+	if isStringEmpty(reqURL.RawQuery) {
+		reqURL.RawQuery = query.Encode()
+	} else {
+		reqURL.RawQuery = reqURL.RawQuery + "&" + query.Encode()
 	}
 
 	r.URL = reqURL.String()
@@ -126,30 +120,18 @@ func parseRequestHeader(c *Client, r *Request) error {
 	return nil
 }
 
-func parseRequestBody(c *Client, r *Request) error {
-	if r.isMultiPart && !(r.Method == MethodPost || r.Method == MethodPut || r.Method == MethodPatch) {
-		err := fmt.Errorf("resty: multipart is not allowed in HTTP verb: %v", r.Method)
-		return &invalidRequestError{Err: err}
-	}
-
-	if r.isPayloadSupported() {
-		switch {
-		case r.isMultiPart: // Handling Multipart
-			if err := handleMultipart(c, r); err != nil {
-				return &invalidRequestError{Err: err}
-			}
-		case len(c.FormData()) > 0 || len(r.FormData) > 0: // Handling Form Data
-			handleFormData(c, r)
-		case r.Body != nil: // Handling Request body
-			if err := handleRequestBody(c, r); err != nil {
-				return &invalidRequestError{Err: err}
-			}
+func parseRequestBody(c *Client, r *Request) (err error) {
+	if r.isMultiPart {
+		r.bodyBuf, err = handleMultipart(c, r)
+	} else if len(c.FormData()) > 0 || len(r.FormData) > 0 {
+		handleFormData(c, r)
+	} else if r.Body != nil {
+		if err := handleRequestBody(c, r); err != nil {
+			return &invalidRequestError{Err: err}
 		}
-	} else {
-		r.Body = nil // if the payload is not supported by HTTP verb, set explicit nil
 	}
 
-	// by default resty won't set content length, but user can opt-in
+	// by default fetch won't set content length, but user can opt-in
 	if r.setContentLength {
 		cntLen := 0
 		if r.bodyBuf != nil {
@@ -203,7 +185,7 @@ func createRawRequest(c *Client, r *Request) (err error) {
 	return
 }
 
-func handleMultipart(c *Client, r *Request) error {
+func handleMultipart(c *Client, r *Request) (any, error) {
 	for k, v := range c.FormData() {
 		if _, ok := r.FormData[k]; ok {
 			continue

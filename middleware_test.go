@@ -780,7 +780,7 @@ func TestReplacePlaceholders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := replacePlaceholders(tt.url, tt.params)
+			got := replacePathParams(tt.url, tt.params)
 			if got != tt.want {
 				t.Errorf("replacePlaceholders() = %q, want %q", got, tt.want)
 			}

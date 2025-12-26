@@ -3,11 +3,9 @@ package fetch
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
-	"maps"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -32,7 +30,6 @@ type Request struct {
 	Time                      time.Time
 	Body                      any
 	Result                    any
-	Error                     any
 	RawRequest                *http.Request
 	Cookies                   []*http.Cookie
 	Debug                     bool
@@ -44,19 +41,14 @@ type Request struct {
 	ResponseBodyLimit         int64
 	IsTrace                   bool
 	IsDone                    bool
-	Timeout                   time.Duration
 
 	isMultiPart       bool
 	isFormData        bool
 	setContentLength  bool
-	jsonEscapeHTML    bool
 	ctx               context.Context
-	ctxCancelFunc     context.CancelFunc
-	values            map[string]any
 	client            *Client
 	bodyBuf           *bytes.Buffer
 	trace             *clientTrace
-	log               Logger
 	baseURL           string
 	multipartBoundary string
 	multipartFields   []*MultipartField
@@ -87,17 +79,6 @@ func (r *Request) Context() context.Context {
 func (r *Request) SetContext(ctx context.Context) *Request {
 	r.ctx = ctx
 	return r
-}
-
-// WithContext returns a shallow copy with the context changed.
-func (r *Request) WithContext(ctx context.Context) *Request {
-	if ctx == nil {
-		panic("resty: Request.WithContext nil context")
-	}
-	rr := new(Request)
-	*rr = *r
-	rr.ctx = ctx
-	return rr
 }
 
 // SetContentType sets the Content-Type header.
@@ -338,13 +319,6 @@ func (r *Request) SetForceResponseContentType(contentType string) *Request {
 	return r
 }
 
-// SetJSONEscapeHTML enables or disables HTML escape on JSON marshal.
-// NOTE: Only applies to standard JSON Marshaller.
-func (r *Request) SetJSONEscapeHTML(b bool) *Request {
-	r.jsonEscapeHTML = b
-	return r
-}
-
 // SetCookie appends a single cookie.
 func (r *Request) SetCookie(hc *http.Cookie) *Request {
 	r.Cookies = append(r.Cookies, hc)
@@ -354,13 +328,6 @@ func (r *Request) SetCookie(hc *http.Cookie) *Request {
 // SetCookies sets multiple cookies.
 func (r *Request) SetCookies(rs []*http.Cookie) *Request {
 	r.Cookies = append(r.Cookies, rs...)
-	return r
-}
-
-// SetTimeout sets the timeout for the request.
-// NOTE: Uses context.WithTimeout, not http.Client.Timeout.
-func (r *Request) SetTimeout(timeout time.Duration) *Request {
-	r.Timeout = timeout
 	return r
 }
 
@@ -547,63 +514,6 @@ func (r *Request) Execute(method, url string) (res *Response, err error) {
 	return
 }
 
-// Clone returns a deep copy of the request with a new context.
-// NOTE: The body is a reference, not a copy.
-func (r *Request) Clone(ctx context.Context) *Request {
-	if ctx == nil {
-		panic("resty: Request.Clone nil context")
-	}
-	rr := new(Request)
-	*rr = *r
-
-	// set new context
-	rr.ctx = ctx
-
-	// RawRequest should not copied, since its created on request execution flow.
-	rr.RawRequest = nil
-
-	// clone values
-	rr.Header = r.Header.Clone()
-	rr.FormData = cloneURLValues(r.FormData)
-	rr.QueryParams = cloneURLValues(r.QueryParams)
-	rr.PathParams = maps.Clone(r.PathParams)
-
-	// clone cookies
-	if l := len(r.Cookies); l > 0 {
-		rr.Cookies = make([]*http.Cookie, l)
-		for _, cookie := range r.Cookies {
-			rr.Cookies = append(rr.Cookies, cloneCookie(cookie))
-		}
-	}
-
-	// create new interface for result and error
-	rr.Result = newInterface(r.Result)
-	rr.Error = newInterface(r.Error)
-
-	// clone multipart fields
-	if l := len(r.multipartFields); l > 0 {
-		rr.multipartFields = make([]*MultipartField, l)
-		for i, mf := range r.multipartFields {
-			rr.multipartFields[i] = mf.Clone()
-		}
-	}
-
-	// reset values
-	rr.Time = time.Time{}
-	rr.initTraceIfEnabled()
-	r.values = make(map[string]any)
-	r.multipartErrChan = nil
-	r.ctxCancelFunc = nil
-
-	// copy bodyBuf
-	if r.bodyBuf != nil {
-		rr.bodyBuf = acquireBuffer()
-		rr.bodyBuf.Write(r.bodyBuf.Bytes())
-	}
-
-	return rr
-}
-
 // Funcs applies RequestFunc functions to the request.
 func (r *Request) Funcs(funcs ...RequestFunc) *Request {
 	for _, f := range funcs {
@@ -680,12 +590,6 @@ func (r *Request) fmtBodyString(sl int) (body string) {
 	return
 }
 
-func (r *Request) initValuesMap() {
-	if r.values == nil {
-		r.values = make(map[string]any)
-	}
-}
-
 func (r *Request) initTraceIfEnabled() {
 	if r.IsTrace {
 		r.trace = new(clientTrace)
@@ -719,25 +623,4 @@ func (r *Request) isPayloadSupported() bool {
 		r.Method == MethodPost ||
 		r.Method == MethodPut ||
 		r.Method == MethodPatch
-}
-
-func (r *Request) withTimeout() *http.Request {
-	if _, found := r.Context().Deadline(); found {
-		return r.RawRequest
-	}
-	if r.Timeout > 0 {
-		ctx, ctxCancelFunc := context.WithTimeout(r.Context(), r.Timeout)
-		r.ctxCancelFunc = ctxCancelFunc
-		return r.RawRequest.WithContext(ctx)
-	}
-	return r.RawRequest
-}
-
-func jsonIndent(v []byte) []byte {
-	buf := acquireBuffer()
-	defer releaseBuffer(buf)
-	if err := json.Indent(buf, v, "", "   "); err != nil {
-		return v
-	}
-	return append([]byte{}, buf.Bytes()...)
 }

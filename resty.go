@@ -3,9 +3,7 @@ package fetch
 import (
 	"math"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
-	"sync"
 )
 
 // New creates a new Client.
@@ -19,35 +17,22 @@ func NewWithTransport(transport http.RoundTripper) *Client {
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
-	return NewWithClient(&http.Client{
-		Jar:       createCookieJar(),
+	return createClient(&http.Client{
 		Transport: transport,
 	})
-}
-
-// NewWithClient creates a new Client with the given http.Client.
-func NewWithClient(hc *http.Client) *Client {
-	return createClient(hc)
 }
 
 //‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // Unexported methods
 //_______________________________________________________________________
 
-func createCookieJar() *cookiejar.Jar {
-	cookieJar, _ := cookiejar.New(nil)
-	return cookieJar
-}
-
 func createClient(hc *http.Client) *Client {
 	c := &Client{ // not setting language default values
-		lock:                    &sync.RWMutex{},
 		queryParams:             url.Values{},
 		formData:                url.Values{},
 		header:                  http.Header{},
 		cookies:                 make([]*http.Cookie, 0),
 		pathParams:              make(map[string]string),
-		jsonEscapeHTML:          true,
 		httpClient:              hc,
 		debugBodyLimit:          math.MaxInt32,
 		contentTypeEncoders:     make(map[string]ContentTypeEncoder),
@@ -55,10 +40,6 @@ func createClient(hc *http.Client) *Client {
 		contentDecompressorKeys: make([]string, 0),
 		contentDecompressors:    make(map[string]ContentDecompressor),
 	}
-
-	// Logger
-	c.SetLogger(createLogger())
-	c.SetDebugLogFormatter(DebugLogFormatter)
 
 	c.AddContentTypeEncoder(jsonKey, encodeJSON)
 	c.AddContentTypeEncoder(xmlKey, encodeXML)
