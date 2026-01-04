@@ -1,141 +1,26 @@
 package fetch
 
 import (
-	"fmt"
+	"errors"
 	"io"
+	"mime/multipart"
+	"net/http"
 	"net/textproto"
-	"os"
-	"path/filepath"
-	"strings"
+	"time"
 )
 
-var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
-
-func escapeQuotes(s string) string {
-	return quoteEscaper.Replace(s)
-}
-
-// MultipartField represents a multipart field for form requests.
 type MultipartField struct {
-	// Name of the multipart field name that the server expects it
-	Name string
-
-	// FileName is used to set the file name we have to send to the server
-	FileName string
-
-	// ContentType is a multipart file content-type value. It is highly
-	// recommended setting it if you know the content-type so that Resty
-	// don't have to do additional computing to auto-detect (Optional)
-	ContentType string
-
-	// Reader is an input of [io.Reader] for multipart upload. It
-	// is optional if you set the FilePath value
-	Reader io.Reader
-
-	// FilePath is a file path for multipart upload. It
-	// is optional if you set the Reader value
-	FilePath string
-
-	// FileSize in bytes is used just for the information purpose of
-	// sharing via [MultipartFieldCallbackFunc] (Optional)
-	FileSize int64
-
-	// ProgressCallback function is used to provide live progress details
-	// during a multipart upload (Optional)
-	//
-	// NOTE: It is recommended to set the FileSize value when using `MultipartField.Reader`
-	// with `ProgressCallback` feature so that Resty sends the FileSize
-	// value via [MultipartFieldProgress]
-	ProgressCallback MultipartFieldCallbackFunc
-
-	// Values field is used to provide form field value. (Optional, unless it's a form-data field)
-	//
-	// It is primarily added for ordered multipart form-data field use cases
-	Values []string
+	Name                    string
+	FileName                string
+	ContentType             string
+	GetReader               func() (io.ReadCloser, error)
+	FileSize                int64
+	ExtraContentDisposition map[string]string
+	ProgressInterval        time.Duration
+	ProgressCallback        MultipartFieldCallbackFunc
+	Values                  []string
 }
 
-// Clone returns a deep copy of MultipartField except io.Reader.
-func (mf *MultipartField) Clone() *MultipartField {
-	mf2 := new(MultipartField)
-	*mf2 = *mf
-	return mf2
-}
-
-func (mf *MultipartField) resetReader() error {
-	if rs, ok := mf.Reader.(io.ReadSeeker); ok {
-		_, err := rs.Seek(0, io.SeekStart)
-		return err
-	}
-	return nil
-}
-
-func (mf *MultipartField) close() {
-	closeq(mf.Reader)
-}
-
-func (mf *MultipartField) createHeader() textproto.MIMEHeader {
-	h := make(textproto.MIMEHeader)
-	if isStringEmpty(mf.FileName) {
-		h.Set(hdrContentDisposition,
-			fmt.Sprintf(`form-data; name="%s"`, escapeQuotes(mf.Name)))
-	} else {
-		h.Set(hdrContentDisposition,
-			fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
-				escapeQuotes(mf.Name), escapeQuotes(mf.FileName)))
-	}
-	if !isStringEmpty(mf.ContentType) {
-		h.Set(hdrContentTypeKey, mf.ContentType)
-	}
-	return h
-}
-
-func (mf *MultipartField) openFileIfRequired() error {
-	if isStringEmpty(mf.FilePath) || mf.Reader != nil {
-		return nil
-	}
-
-	file, err := os.Open(mf.FilePath)
-	if err != nil {
-		return err
-	}
-
-	if isStringEmpty(mf.FileName) {
-		mf.FileName = filepath.Base(mf.FilePath)
-	}
-
-	// if file open is success, stat will succeed
-	fileStat, _ := file.Stat()
-
-	mf.Reader = file
-	mf.FileSize = fileStat.Size()
-
-	return nil
-}
-
-func (mf *MultipartField) wrapProgressCallbackIfPresent(pw io.Writer) io.Writer {
-	if mf.ProgressCallback == nil {
-		return pw
-	}
-
-	return &multipartProgressWriter{
-		w: pw,
-		f: func(pb int64) {
-			mf.ProgressCallback(MultipartFieldProgress{
-				Name:     mf.Name,
-				FileName: mf.FileName,
-				FileSize: mf.FileSize,
-				Written:  pb,
-			})
-		},
-	}
-}
-
-// MultipartFieldCallbackFunc function used to transmit live multipart upload
-// progress in bytes count
-type MultipartFieldCallbackFunc func(MultipartFieldProgress)
-
-// MultipartFieldProgress struct used to provide multipart field upload progress
-// details via callback function
 type MultipartFieldProgress struct {
 	Name     string
 	FileName string
@@ -143,24 +28,149 @@ type MultipartFieldProgress struct {
 	Written  int64
 }
 
-// String method creates the string representation of [MultipartFieldProgress]
-func (mfp MultipartFieldProgress) String() string {
-	return fmt.Sprintf("FieldName: %s, FileName: %s, FileSize: %v, Written: %v",
-		mfp.Name, mfp.FileName, mfp.FileSize, mfp.Written)
+type MultipartFieldCallbackFunc func(MultipartFieldProgress)
+
+type MultipartOptions struct {
+	Boundary string
 }
 
-type multipartProgressWriter struct {
-	w  io.Writer
-	pb int64
-	f  func(int64)
-}
+func createMultipartHeader(mf *MultipartField, contentType string) textproto.MIMEHeader {
+	h := make(textproto.MIMEHeader)
 
-func (mpw *multipartProgressWriter) Write(p []byte) (n int, err error) {
-	n, err = mpw.w.Write(p)
-	if n <= 0 {
-		return
+	if mf.FileName != "" {
+		h.Add("name", mf.Name)
 	}
-	mpw.pb += int64(n)
-	mpw.f(mpw.pb)
-	return
+
+	if mf.FileName != "" {
+		h.Add("filename", mf.FileName)
+	}
+
+	for k, v := range mf.ExtraContentDisposition {
+		h.Add(k, v)
+	}
+
+	if contentType != "" {
+		h.Set("Content-Type", contentType)
+	}
+
+	return h
+}
+
+func createMultipart(w *multipart.Writer, mf *MultipartField) error {
+	if len(mf.Values) > 0 {
+		for _, v := range mf.Values {
+			w.WriteField(mf.Name, v)
+		}
+
+		return nil
+	}
+
+	content, err := mf.GetReader()
+	if err != nil {
+		return err
+	}
+	defer content.Close()
+
+	lastTime := time.Now()
+	buf := make([]byte, 512)
+	seeEOF := false
+	size, err := content.Read(buf)
+	if err != nil {
+		if err == io.EOF {
+			seeEOF = true
+		} else {
+			return err
+		}
+	}
+
+	contentType := mf.ContentType
+	if contentType == "" {
+		contentType = http.DetectContentType(buf[:size])
+	}
+
+	pw, err := w.CreatePart(createMultipartHeader(mf, contentType))
+	if err != nil {
+		return err
+	}
+
+	if mf.ProgressCallback != nil {
+		interval := mf.ProgressInterval
+
+		if interval <= 0 {
+			interval = 1 * time.Second
+		}
+
+		pw = &callbackWriter{
+			Writer:    pw,
+			lastTime:  lastTime,
+			interval:  interval,
+			totalSize: mf.FileSize,
+			callback: func(written int64) {
+				mf.ProgressCallback(MultipartFieldProgress{
+					Name:     mf.Name,
+					FileName: mf.FileName,
+					FileSize: mf.FileSize,
+					Written:  written,
+				})
+			},
+		}
+	}
+
+	if _, err = pw.Write(buf[:size]); err != nil {
+		return err
+	}
+
+	if seeEOF {
+		return nil
+	}
+
+	_, err = io.Copy(pw, content)
+	return err
+}
+
+func Multipart(fields []*MultipartField, opts ...func(*MultipartOptions)) Middleware {
+	options := applyOptions(&MultipartOptions{}, opts...)
+
+	return func(handler Handler) Handler {
+		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+			if len(fields) == 0 {
+				return handler.Handle(client, req)
+			}
+
+			pr, pw := io.Pipe()
+			req.GetBody = func() (io.ReadCloser, error) { return pr, nil }
+			w := multipart.NewWriter(pw)
+
+			if options.Boundary != "" {
+				w.SetBoundary(options.Boundary)
+			}
+
+			req.Header.Set("Content-Type", w.FormDataContentType())
+
+			multipartErrChan := make(chan error, 1)
+
+			go func() {
+				defer close(multipartErrChan)
+				defer pw.Close()
+				defer w.Close()
+
+				for _, mf := range fields {
+					if err := createMultipart(w, mf); err != nil {
+						multipartErrChan <- err
+						return
+					}
+				}
+			}()
+
+			resp, respErr := handler.Handle(client, req)
+			select {
+			case err := <-multipartErrChan:
+				respErr = errors.Join(respErr, err)
+			default:
+				// Channel already consumed or closed, nothing to do
+			}
+
+			return resp, respErr
+		})
+	}
 }
