@@ -57,7 +57,7 @@ type RoundTripper struct {
 	optionsFunc func(req *http.Request) *Options
 }
 
-var skipKey = utils.NewContextKey[bool]("dump_skip")
+var skipKey = utils.NewContextKey[bool]("fetch_dump_skip")
 
 func SkipDump(ctx context.Context) context.Context {
 	return skipKey.WithValue(ctx, true)
