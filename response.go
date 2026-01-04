@@ -51,11 +51,15 @@ func (r *Response) Read(p []byte) (n int, err error) {
 }
 
 // Close discards any remaining response body and closes it.
+// Safe to call even when Error is present or RawResponse is nil.
 func (r *Response) Close() error {
-	io.Copy(io.Discard, r.RawResponse.Body)
 	if r.Error != nil {
 		return r.Error
 	}
+	if r.RawResponse == nil || r.RawResponse.Body == nil {
+		return nil
+	}
+	io.Copy(io.Discard, r.RawResponse.Body)
 	return r.RawResponse.Body.Close()
 }
 

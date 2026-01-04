@@ -56,6 +56,8 @@ func TestResponse_JSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := tt.setupResp()
+			defer resp.Close()
+
 			var result TestStruct
 			err := resp.JSON(&result)
 
@@ -111,6 +113,8 @@ func TestResponse_XML(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := tt.setupResp()
+			defer resp.Close()
+
 			var result TestStruct
 			err := resp.XML(&result)
 
@@ -174,6 +178,8 @@ func TestResponse_Bytes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := tt.setupResp()
+			defer resp.Close()
+
 			result := resp.Bytes()
 
 			if tt.expected == nil {
@@ -230,6 +236,8 @@ func TestResponse_String(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := tt.setupResp()
+			defer resp.Close()
+
 			result := resp.String()
 			assert.Equal(t, tt.expected, result)
 		})
@@ -372,6 +380,25 @@ func TestResponse_Close(t *testing.T) {
 			},
 			expectError: true,
 		},
+		{
+			name: "close with nil response - safe to defer",
+			setupResp: func() *Response {
+				return buildResponse(&http.Request{}, nil, errors.New("connection failed"))
+			},
+			expectError: true,
+		},
+		{
+			name: "close with nil body - safe to defer",
+			setupResp: func() *Response {
+				resp := &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{},
+					Body:       nil,
+				}
+				return buildResponse(&http.Request{}, resp, nil)
+			},
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -384,6 +411,57 @@ func TestResponse_Close(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+// TestResponse_Close_Defer verifies that defer resp.Close() is safe in all scenarios
+func TestResponse_Close_Defer(t *testing.T) {
+	tests := []struct {
+		name      string
+		setupResp func() *Response
+	}{
+		{
+			name: "defer close on successful response",
+			setupResp: func() *Response {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Write([]byte("success"))
+				}))
+				defer server.Close()
+
+				resp, _ := http.Get(server.URL)
+				return buildResponse(&http.Request{}, resp, nil)
+			},
+		},
+		{
+			name: "defer close on error response - no panic",
+			setupResp: func() *Response {
+				return buildResponse(&http.Request{}, nil, errors.New("network error"))
+			},
+		},
+		{
+			name: "defer close on nil body - no panic",
+			setupResp: func() *Response {
+				resp := &http.Response{StatusCode: 204, Body: nil}
+				return buildResponse(&http.Request{}, resp, nil)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// This pattern should not panic
+			func() {
+				resp := tt.setupResp()
+				defer resp.Close()
+
+				// Simulate using the response
+				if resp.Error == nil {
+					_ = resp.String()
+				}
+			}()
+			// If we reach here, no panic occurred
+			assert.True(t, true)
 		})
 	}
 }

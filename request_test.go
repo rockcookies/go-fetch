@@ -117,6 +117,7 @@ func TestRequest_UseFuncs(t *testing.T) {
 			defer server.Close()
 
 			resp := req.Send("GET", server.URL)
+			defer resp.Close()
 			assert.NoError(t, resp.Error)
 		})
 	}
@@ -154,6 +155,7 @@ func TestRequest_Body(t *testing.T) {
 			defer server.Close()
 
 			resp := req.Send("POST", server.URL)
+			defer resp.Close()
 			assert.NoError(t, resp.Error)
 		})
 	}
@@ -194,6 +196,7 @@ func TestRequest_JSON(t *testing.T) {
 			defer server.Close()
 
 			resp := req.Send("POST", server.URL)
+			defer resp.Close()
 			assert.NoError(t, resp.Error)
 		})
 	}
@@ -227,6 +230,7 @@ func TestRequest_Form(t *testing.T) {
 			defer server.Close()
 
 			resp := req.Send("POST", server.URL)
+			defer resp.Close()
 			assert.NoError(t, resp.Error)
 		})
 	}
@@ -261,6 +265,7 @@ func TestRequest_Clone(t *testing.T) {
 			defer server.Close()
 
 			resp := original.Send("GET", server.URL)
+			defer resp.Close()
 			assert.NoError(t, resp.Error)
 		})
 	}
@@ -326,6 +331,7 @@ func TestRequest_Send(t *testing.T) {
 			}
 
 			resp := req.Send(tt.method, serverURL)
+			defer resp.Close()
 
 			if tt.expectError {
 				assert.Error(t, resp.Error)
