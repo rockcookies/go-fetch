@@ -72,7 +72,3 @@ func compose(middlewares ...Middleware) Middleware {
 		return handler
 	}
 }
-
-func isBodySet(req *http.Request) bool {
-	return req.Body != nil || req.GetBody != nil
-}

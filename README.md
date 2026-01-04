@@ -194,6 +194,53 @@ req.UseFuncs(func(r *http.Request) {
 })
 ```
 
+### Headers Middleware
+
+Configure headers at the dispatcher or request level using middleware:
+
+```go
+// Global header configuration
+dispatcher.Use(fetch.PrepareHeaderMiddleware())
+dispatcher.Use(fetch.SetHeaderOptions(func(opts *fetch.HeaderOptions) {
+    opts.Header.Set("User-Agent", "MyApp/1.0")
+    opts.Header.Set("Accept", "application/json")
+}))
+
+// Context-level headers
+ctx := fetch.WithHeaderOptions(context.Background(), func(opts *fetch.HeaderOptions) {
+    opts.Header.Set("Authorization", "Bearer token123")
+})
+req.UseFuncs(func(r *http.Request) {
+    *r = *r.WithContext(ctx)
+})
+```
+
+### Cookies Middleware
+
+Manage cookies using middleware for consistent cookie handling:
+
+```go
+// Add cookies at the dispatcher level
+dispatcher.Use(fetch.PrepareCookieMiddleware())
+dispatcher.Use(fetch.SetCookieOptions(func(opts *fetch.CookieOptions) {
+    opts.Cookies = append(opts.Cookies, &http.Cookie{
+        Name:  "session",
+        Value: "token123",
+    })
+}))
+
+// Context-level cookies
+ctx := fetch.WithCookieOptions(context.Background(), func(opts *fetch.CookieOptions) {
+    opts.Cookies = append(opts.Cookies, &http.Cookie{
+        Name:  "auth",
+        Value: "secret",
+    })
+})
+req.UseFuncs(func(r *http.Request) {
+    *r = *r.WithContext(ctx)
+})
+```
+
 ## Advanced Usage
 
 ### Cloning Requests
