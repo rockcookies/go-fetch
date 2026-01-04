@@ -10,6 +10,7 @@ import (
 	"github.com/rockcookies/go-fetch/internal/utils"
 )
 
+// URLOptions configures URL construction with base URL, path parameters, and query parameters.
 type URLOptions struct {
 	BaseURL     string
 	PathParams  map[string]string
@@ -18,6 +19,8 @@ type URLOptions struct {
 
 var prepareURLKey = utils.NewContextKey[[]func(*URLOptions)]("prepare_url")
 
+// PrepareURLMiddleware creates middleware that processes URL options.
+// It applies base URL, path parameters, and query parameters to the request.
 func PrepareURLMiddleware() Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -67,10 +70,13 @@ func PrepareURLMiddleware() Middleware {
 	}
 }
 
+// SetURLOptions creates middleware that applies URL option modifiers.
 func SetURLOptions(funcs ...func(*URLOptions)) Middleware {
 	return withOptionsMiddleware(&prepareURLKey, funcs...)
 }
 
+// WithURLOptions adds URL options to the context.
+// Used when building requests programmatically.
 func WithURLOptions(ctx context.Context, options ...func(*URLOptions)) context.Context {
 	return withOptions(&prepareURLKey, ctx, options...)
 }

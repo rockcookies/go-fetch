@@ -9,6 +9,9 @@ import (
 	"os"
 )
 
+// Response wraps an HTTP response and provides convenient methods
+// for reading and decoding the response body.
+// It implements io.Reader and buffers content for multiple reads.
 type Response struct {
 	Error       error
 	Header      http.Header
@@ -38,6 +41,8 @@ func buildResponse(req *http.Request, resp *http.Response, err error) *Response 
 	return response
 }
 
+// Read implements io.Reader by reading from the underlying response body.
+// Returns an error if the response contains an error.
 func (r *Response) Read(p []byte) (n int, err error) {
 	if r.Error != nil {
 		return -1, r.Error
@@ -45,6 +50,7 @@ func (r *Response) Read(p []byte) (n int, err error) {
 	return r.RawResponse.Body.Read(p)
 }
 
+// Close discards any remaining response body and closes it.
 func (r *Response) Close() error {
 	io.Copy(io.Discard, r.RawResponse.Body)
 	if r.Error != nil {
@@ -53,6 +59,8 @@ func (r *Response) Close() error {
 	return r.RawResponse.Body.Close()
 }
 
+// SaveToFile writes the response body to a file.
+// Uses internal buffering if available.
 func (r *Response) SaveToFile(fileName string) error {
 	if r.Error != nil {
 		return r.Error
@@ -74,6 +82,7 @@ func (r *Response) SaveToFile(fileName string) error {
 	return nil
 }
 
+// JSON decodes the response body as JSON into the provided struct.
 func (r *Response) JSON(userStruct any) error {
 	if r.Error != nil {
 		return r.Error
@@ -89,6 +98,7 @@ func (r *Response) JSON(userStruct any) error {
 	return nil
 }
 
+// XML decodes the response body as XML into the provided struct.
 func (r *Response) XML(userStruct any) error {
 	if r.Error != nil {
 		return r.Error
@@ -104,6 +114,8 @@ func (r *Response) XML(userStruct any) error {
 	return nil
 }
 
+// Bytes returns the response body as a byte slice.
+// Uses internal buffering for efficient multiple reads.
 func (r *Response) Bytes() []byte {
 	if r.Error != nil {
 		return nil
@@ -118,6 +130,8 @@ func (r *Response) Bytes() []byte {
 	return r.buffer.Bytes()
 }
 
+// String returns the response body as a string.
+// Uses internal buffering for efficient multiple reads.
 func (r *Response) String() string {
 	if r.Error != nil {
 		return ""
@@ -127,6 +141,8 @@ func (r *Response) String() string {
 	return r.buffer.String()
 }
 
+// ClearInternalBuffer resets the internal buffer.
+// Does nothing if an error is present.
 func (r *Response) ClearInternalBuffer() {
 	if r.Error != nil {
 		return // This is a noop as we will be dereferencing a null pointer

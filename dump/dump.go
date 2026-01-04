@@ -1,3 +1,4 @@
+// Package dump provides HTTP request/response dumping and logging middleware.
 package dump
 
 import (

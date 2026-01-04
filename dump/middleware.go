@@ -1,3 +1,4 @@
+// Package dump provides HTTP request/response dumping and logging middleware.
 package dump
 
 import (
@@ -10,6 +11,8 @@ import (
 	"github.com/rockcookies/go-fetch/internal/utils"
 )
 
+// Options configures the dump middleware behavior including logging, filtering,
+// and request/response body handling.
 type Options struct {
 	Skippers             []func(req *http.Request) bool
 	Logger               *slog.Logger
@@ -26,6 +29,8 @@ type Options struct {
 	ResponseAttrs        func(*http.Response, time.Duration) []slog.Attr
 }
 
+// DefaultOptions returns sensible default options for the dump middleware.
+// Sets 10KB max for request body and 100KB max for response body.
 func DefaultOptions() *Options {
 	return &Options{
 		Logger:   slog.Default(),
@@ -52,6 +57,7 @@ func DefaultOptions() *Options {
 
 var _ http.RoundTripper = (*RoundTripper)(nil)
 
+// RoundTripper is an http.RoundTripper that logs request and response details.
 type RoundTripper struct {
 	next        http.RoundTripper
 	optionsFunc func(req *http.Request) *Options
@@ -59,10 +65,13 @@ type RoundTripper struct {
 
 var skipKey = utils.NewContextKey[bool]("fetch_dump_skip")
 
+// SkipDump returns a context that will skip dump logging for the request.
 func SkipDump(ctx context.Context) context.Context {
 	return skipKey.WithValue(ctx, true)
 }
 
+// NewRoundTripper creates a new dump RoundTripper with dynamic options.
+// The optionsFunc is called for each request to determine logging behavior.
 func NewRoundTripper(next http.RoundTripper, optionsFunc func(req *http.Request) *Options) *RoundTripper {
 	if next == nil {
 		next = http.DefaultTransport
@@ -74,12 +83,14 @@ func NewRoundTripper(next http.RoundTripper, optionsFunc func(req *http.Request)
 	}
 }
 
+// NewRoundTripperWithOptions creates a new dump RoundTripper with fixed options.
 func NewRoundTripperWithOptions(next http.RoundTripper, options *Options) *RoundTripper {
 	return NewRoundTripper(next, func(req *http.Request) *Options {
 		return options
 	})
 }
 
+// RoundTrip implements http.RoundTripper by logging the request and response.
 func (rt *RoundTripper) RoundTrip(req *http.Request) (resp *http.Response, err error) {
 	if skip, _ := skipKey.GetValue(req.Context()); skip {
 		return rt.next.RoundTrip(req)

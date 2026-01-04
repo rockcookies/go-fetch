@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+// callbackWriter wraps an io.Writer to invoke a callback periodically during writes.
+// Used internally for progress tracking during multipart uploads.
 type callbackWriter struct {
 	io.Writer
 	written   int64

@@ -7,16 +7,19 @@ import (
 	"strings"
 )
 
+// Filter determines whether a request/response should be logged.
+// Returns true to log, false to skip.
 type Filter func(request *http.Request, responseStatus int) bool
 
-// Basic
+// Accept returns the filter as-is for explicit inclusion.
 func Accept(filter Filter) Filter { return filter }
 
+// Ignore inverts a filter to exclude matching requests.
 func Ignore(filter Filter) Filter {
 	return func(r *http.Request, responseStatus int) bool { return !filter(r, responseStatus) }
 }
 
-// Method
+// AcceptMethod returns a filter that accepts requests with specified HTTP methods.
 func AcceptMethod(methods ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		reqMethod := strings.ToLower(r.Method)
@@ -31,6 +34,7 @@ func AcceptMethod(methods ...string) Filter {
 	}
 }
 
+// IgnoreMethod returns a filter that rejects requests with specified HTTP methods.
 func IgnoreMethod(methods ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		reqMethod := strings.ToLower(r.Method)
@@ -45,72 +49,83 @@ func IgnoreMethod(methods ...string) Filter {
 	}
 }
 
-// Status
+// AcceptStatus returns a filter that accepts responses with specified status codes.
 func AcceptStatus(statuses ...int) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		return slices.Contains(statuses, responseStatus)
 	}
 }
 
+// IgnoreStatus returns a filter that rejects responses with specified status codes.
 func IgnoreStatus(statuses ...int) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		return !slices.Contains(statuses, responseStatus)
 	}
 }
 
+// AcceptStatusGreaterThan accepts responses with status code greater than the specified value.
 func AcceptStatusGreaterThan(status int) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		return responseStatus > status
 	}
 }
 
+// AcceptStatusGreaterThanOrEqual accepts responses with status code >= the specified value.
 func AcceptStatusGreaterThanOrEqual(status int) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		return responseStatus >= status
 	}
 }
 
+// AcceptStatusLessThan accepts responses with status code less than the specified value.
 func AcceptStatusLessThan(status int) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		return responseStatus < status
 	}
 }
 
+// AcceptStatusLessThanOrEqual accepts responses with status code <= the specified value.
 func AcceptStatusLessThanOrEqual(status int) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		return responseStatus <= status
 	}
 }
 
+// IgnoreStatusGreaterThan rejects responses with status code greater than the specified value.
 func IgnoreStatusGreaterThan(status int) Filter {
 	return AcceptStatusLessThanOrEqual(status)
 }
 
+// IgnoreStatusGreaterThanOrEqual rejects responses with status code >= the specified value.
 func IgnoreStatusGreaterThanOrEqual(status int) Filter {
 	return AcceptStatusLessThan(status)
 }
 
+// IgnoreStatusLessThan rejects responses with status code less than the specified value.
 func IgnoreStatusLessThan(status int) Filter {
 	return AcceptStatusGreaterThanOrEqual(status)
 }
 
+// IgnoreStatusLessThanOrEqual rejects responses with status code <= the specified value.
 func IgnoreStatusLessThanOrEqual(status int) Filter {
 	return AcceptStatusGreaterThan(status)
 }
 
-// Path
+// AcceptPath accepts requests matching the exact paths specified.
 func AcceptPath(urls ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		return slices.Contains(urls, r.URL.Path)
 	}
 }
 
+// IgnorePath rejects requests matching the exact paths specified.
 func IgnorePath(urls ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		return !slices.Contains(urls, r.URL.Path)
 	}
 }
 
+// AcceptPathContains accepts requests whose path contains any of the specified strings.
 func AcceptPathContains(parts ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, part := range parts {
@@ -123,6 +138,7 @@ func AcceptPathContains(parts ...string) Filter {
 	}
 }
 
+// IgnorePathContains rejects requests whose path contains any of the specified strings.
 func IgnorePathContains(parts ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, part := range parts {
@@ -135,6 +151,7 @@ func IgnorePathContains(parts ...string) Filter {
 	}
 }
 
+// AcceptPathPrefix accepts requests whose path starts with any of the specified prefixes.
 func AcceptPathPrefix(prefixes ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, prefix := range prefixes {
@@ -147,6 +164,7 @@ func AcceptPathPrefix(prefixes ...string) Filter {
 	}
 }
 
+// IgnorePathPrefix rejects requests whose path starts with any of the specified prefixes.
 func IgnorePathPrefix(prefixes ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, prefix := range prefixes {
@@ -159,6 +177,7 @@ func IgnorePathPrefix(prefixes ...string) Filter {
 	}
 }
 
+// AcceptPathSuffix accepts requests whose path ends with any of the specified suffixes.
 func AcceptPathSuffix(suffixes ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, suffix := range suffixes {
@@ -171,6 +190,7 @@ func AcceptPathSuffix(suffixes ...string) Filter {
 	}
 }
 
+// IgnorePathSuffix rejects requests whose path ends with any of the specified suffixes.
 func IgnorePathSuffix(suffixes ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, suffix := range suffixes {
@@ -183,6 +203,7 @@ func IgnorePathSuffix(suffixes ...string) Filter {
 	}
 }
 
+// AcceptPathMatch accepts requests whose path matches any of the specified regular expressions.
 func AcceptPathMatch(regs ...regexp.Regexp) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, reg := range regs {
@@ -195,6 +216,7 @@ func AcceptPathMatch(regs ...regexp.Regexp) Filter {
 	}
 }
 
+// IgnorePathMatch rejects requests whose path matches any of the specified regular expressions.
 func IgnorePathMatch(regs ...regexp.Regexp) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, reg := range regs {
@@ -207,19 +229,21 @@ func IgnorePathMatch(regs ...regexp.Regexp) Filter {
 	}
 }
 
-// Host
+// AcceptHost accepts requests matching the exact hosts specified.
 func AcceptHost(hosts ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		return slices.Contains(hosts, r.URL.Host)
 	}
 }
 
+// IgnoreHost rejects requests matching the exact hosts specified.
 func IgnoreHost(hosts ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		return !slices.Contains(hosts, r.URL.Host)
 	}
 }
 
+// AcceptHostContains accepts requests whose host contains any of the specified strings.
 func AcceptHostContains(parts ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, part := range parts {
@@ -232,6 +256,7 @@ func AcceptHostContains(parts ...string) Filter {
 	}
 }
 
+// IgnoreHostContains rejects requests whose host contains any of the specified strings.
 func IgnoreHostContains(parts ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, part := range parts {
@@ -244,6 +269,7 @@ func IgnoreHostContains(parts ...string) Filter {
 	}
 }
 
+// AcceptHostPrefix accepts requests whose host starts with any of the specified prefixes.
 func AcceptHostPrefix(prefixes ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, prefix := range prefixes {
@@ -256,6 +282,7 @@ func AcceptHostPrefix(prefixes ...string) Filter {
 	}
 }
 
+// IgnoreHostPrefix rejects requests whose host starts with any of the specified prefixes.
 func IgnoreHostPrefix(prefixes ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, prefix := range prefixes {
@@ -268,6 +295,7 @@ func IgnoreHostPrefix(prefixes ...string) Filter {
 	}
 }
 
+// AcceptHostSuffix accepts requests whose host ends with any of the specified suffixes.
 func AcceptHostSuffix(suffixes ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, suffix := range suffixes {
@@ -280,6 +308,7 @@ func AcceptHostSuffix(suffixes ...string) Filter {
 	}
 }
 
+// IgnoreHostSuffix rejects requests whose host ends with any of the specified suffixes.
 func IgnoreHostSuffix(suffixes ...string) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, suffix := range suffixes {
@@ -292,6 +321,7 @@ func IgnoreHostSuffix(suffixes ...string) Filter {
 	}
 }
 
+// AcceptHostMatch accepts requests whose host matches any of the specified regular expressions.
 func AcceptHostMatch(regs ...regexp.Regexp) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, reg := range regs {
@@ -304,6 +334,7 @@ func AcceptHostMatch(regs ...regexp.Regexp) Filter {
 	}
 }
 
+// IgnoreHostMatch rejects requests whose host matches any of the specified regular expressions.
 func IgnoreHostMatch(regs ...regexp.Regexp) Filter {
 	return func(r *http.Request, responseStatus int) bool {
 		for _, reg := range regs {

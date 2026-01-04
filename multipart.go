@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+// MultipartField represents a single field in a multipart/form-data request.
+// It can be either a form value or a file upload with progress tracking.
 type MultipartField struct {
 	Name                    string
 	FileName                string
@@ -21,6 +23,7 @@ type MultipartField struct {
 	Values                  []string
 }
 
+// MultipartFieldProgress tracks upload progress for a multipart field.
 type MultipartFieldProgress struct {
 	Name     string
 	FileName string
@@ -28,8 +31,10 @@ type MultipartFieldProgress struct {
 	Written  int64
 }
 
+// MultipartFieldCallbackFunc is called periodically during field upload to report progress.
 type MultipartFieldCallbackFunc func(MultipartFieldProgress)
 
+// MultipartOptions configures multipart request creation.
 type MultipartOptions struct {
 	Boundary string
 }
@@ -128,6 +133,9 @@ func createMultipart(w *multipart.Writer, mf *MultipartField) error {
 	return err
 }
 
+// Multipart creates middleware that builds a multipart/form-data request body.
+// It streams the fields using a pipe to avoid loading everything into memory.
+// Supports progress callbacks for individual fields.
 func Multipart(fields []*MultipartField, opts ...func(*MultipartOptions)) Middleware {
 	options := applyOptions(&MultipartOptions{}, opts...)
 

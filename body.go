@@ -11,11 +11,14 @@ import (
 	"github.com/rockcookies/go-fetch/internal/bufferpool"
 )
 
+// BodyOptions configures how the request body is handled.
 type BodyOptions struct {
 	ContentType          string
 	AutoSetContentLength bool
 }
 
+// BodyReader creates middleware that sets the request body from an io.Reader.
+// It can optionally set Content-Type and Content-Length headers.
 func BodyReader(reader io.Reader, opts ...func(*BodyOptions)) Middleware {
 	options := applyOptions(&BodyOptions{}, opts...)
 
@@ -41,6 +44,8 @@ func BodyReader(reader io.Reader, opts ...func(*BodyOptions)) Middleware {
 	}
 }
 
+// BodyGetReader creates middleware that lazily provides the request body.
+// The getter function is called when the body is needed, supporting retries.
 func BodyGetReader(getReader func() (io.Reader, error), opts ...func(*BodyOptions)) Middleware {
 	options := applyOptions(&BodyOptions{}, opts...)
 
@@ -71,6 +76,8 @@ func BodyGetReader(getReader func() (io.Reader, error), opts ...func(*BodyOption
 	}
 }
 
+// BodyGetBytes creates middleware that lazily provides the request body as bytes.
+// This is more efficient than BodyGetReader when the body size is known.
 func BodyGetBytes(getBytes func() ([]byte, error), opts ...func(*BodyOptions)) Middleware {
 	options := applyOptions(&BodyOptions{}, opts...)
 
@@ -100,6 +107,9 @@ func BodyGetBytes(getBytes func() ([]byte, error), opts ...func(*BodyOptions)) M
 	}
 }
 
+// BodyJSON creates middleware that marshals data to JSON and sets it as the request body.
+// Accepts string, []byte, or any marshallable type.
+// Automatically sets Content-Type to application/json.
 func BodyJSON(data any, opts ...func(*BodyOptions)) Middleware {
 	return BodyGetBytes(func() ([]byte, error) {
 		switch v := data.(type) {
@@ -124,6 +134,9 @@ func BodyJSON(data any, opts ...func(*BodyOptions)) Middleware {
 	}, opts...)...)
 }
 
+// BodyXML creates middleware that marshals data to XML and sets it as the request body.
+// Accepts string, []byte, or any marshallable type.
+// Automatically sets Content-Type to application/xml.
 func BodyXML(data any, opts ...func(*BodyOptions)) Middleware {
 	return BodyGetBytes(func() ([]byte, error) {
 		switch v := data.(type) {
@@ -148,6 +161,8 @@ func BodyXML(data any, opts ...func(*BodyOptions)) Middleware {
 	}, opts...)...)
 }
 
+// BodyForm creates middleware that encodes form data and sets it as the request body.
+// Automatically sets Content-Type to application/x-www-form-urlencoded.
 func BodyForm(data url.Values, opts ...func(*BodyOptions)) Middleware {
 	return BodyGetBytes(func() ([]byte, error) {
 		buf := bufferpool.Get()
