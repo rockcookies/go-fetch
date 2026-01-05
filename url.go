@@ -1,68 +1,25 @@
 package fetch
 
 import (
-	"context"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
-
-	"github.com/rockcookies/go-fetch/internal/utils"
 )
 
-// URLOptions configures URL construction with base URL, path parameters, and query parameters.
-type URLOptions struct {
-	BaseURL     string
-	PathParams  map[string]string
-	QueryParams url.Values
-}
-
-var prepareURLKey = utils.NewContextKey[[]func(*URLOptions)]("prepare_url")
-
-// PrepareURLMiddleware creates middleware that processes URL options.
-// It applies base URL, path parameters, and query parameters to the request.
-func PrepareURLMiddleware() Middleware {
+func SetBaseURL(uri string) Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			options, _ := getOptions(&prepareURLKey, req, func() *URLOptions {
-				return &URLOptions{
-					PathParams:  map[string]string{},
-					QueryParams: url.Values{},
-				}
-			})
-
-			if options == nil {
-				return h.Handle(client, req)
+			u, err := url.Parse(normalize(uri))
+			if err != nil {
+				return nil, err
 			}
 
-			// Apply BaseURL
-			if len(options.BaseURL) > 0 {
-				baseURL, err := url.Parse(normalize(options.BaseURL))
-				if err != nil {
-					return nil, &InvalidRequestError{err: err}
-				}
+			req.URL.Scheme = u.Scheme
+			req.URL.Host = u.Host
 
-				req.URL.Scheme = baseURL.Scheme
-				req.URL.Host = baseURL.Host
-
-				if baseURL.Path != "" && baseURL.Path != "/" {
-					req.URL.Path = normalizePath(req.URL.Path)
-				}
-			}
-
-			// Apply PathParams
-			for key, value := range options.PathParams {
-				placeholder := "{" + key + "}"
-				req.URL.Path = strings.ReplaceAll(req.URL.Path, placeholder, value)
-			}
-
-			// Apply QueryParams
-			if len(options.QueryParams) > 0 {
-				if req.URL.RawQuery == "" {
-					req.URL.RawQuery = options.QueryParams.Encode()
-				} else {
-					req.URL.RawQuery = req.URL.RawQuery + "&" + options.QueryParams.Encode()
-				}
+			if u.Path != "" && u.Path != "/" {
+				req.URL.Path = normalizePath(req.URL.Path)
 			}
 
 			return h.Handle(client, req)
@@ -70,15 +27,34 @@ func PrepareURLMiddleware() Middleware {
 	}
 }
 
-// SetURLOptions creates middleware that applies URL option modifiers.
-func SetURLOptions(funcs ...func(*URLOptions)) Middleware {
-	return withOptionsMiddleware(&prepareURLKey, funcs...)
+func SetPathSuffix(suffix string) Middleware {
+	return func(h Handler) Handler {
+		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+			req.URL.Path += normalizePath(suffix)
+			return h.Handle(client, req)
+		})
+	}
 }
 
-// WithURLOptions adds URL options to the context.
-// Used when building requests programmatically.
-func WithURLOptions(ctx context.Context, options ...func(*URLOptions)) context.Context {
-	return withOptions(&prepareURLKey, ctx, options...)
+func SetPathPrefix(prefix string) Middleware {
+	return func(h Handler) Handler {
+		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+			req.URL.Path = normalizePath(prefix) + req.URL.Path
+			return h.Handle(client, req)
+		})
+	}
+}
+
+func SetPathParams(params map[string]string) Middleware {
+	return func(h Handler) Handler {
+		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+			for key, value := range params {
+				placeholder := "{" + key + "}"
+				req.URL.Path = strings.ReplaceAll(req.URL.Path, placeholder, value)
+			}
+			return h.Handle(client, req)
+		})
+	}
 }
 
 func normalizePath(path string) string {

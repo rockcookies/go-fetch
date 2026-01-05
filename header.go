@@ -4,7 +4,7 @@ import (
 	"net/http"
 )
 
-// HeaderFuncs returns a middleware that applies a series of functions to modify the request headers
+// SetHeader returns a middleware that applies a series of functions to modify the request headers
 // before making the actual HTTP request. This provides flexible control over header manipulation
 // through direct access to the http.Header map.
 //
@@ -16,7 +16,7 @@ import (
 //
 // Example:
 //
-//	middleware := fetch.HeaderFuncs(
+//	middleware := fetch.SetHeader(
 //	    func(h http.Header) {
 //	        h.Set("User-Agent", "MyApp/1.0")
 //	        h.Set("Accept", "application/json")
@@ -26,7 +26,7 @@ import (
 //	        h.Add("X-Custom-Header", "value2")  // Multiple values
 //	    },
 //	)
-func HeaderFuncs(funcs ...func(h http.Header)) Middleware {
+func SetHeader(funcs ...func(h http.Header)) Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 			for _, f := range funcs {
@@ -35,4 +35,52 @@ func HeaderFuncs(funcs ...func(h http.Header)) Middleware {
 			return h.Handle(client, req)
 		})
 	}
+}
+
+func AddHeaderKV(key, value string) Middleware {
+	return SetHeader(func(h http.Header) {
+		h.Add(key, value)
+	})
+}
+
+func SetHeaderKV(key, value string) Middleware {
+	return SetHeader(func(h http.Header) {
+		h.Set(key, value)
+	})
+}
+
+func AddHeaderFromMap(headers map[string]string) Middleware {
+	return SetHeader(func(h http.Header) {
+		for k, v := range headers {
+			h.Add(k, v)
+		}
+	})
+}
+
+func SetHeaderFromMap(headers map[string]string) Middleware {
+	return SetHeader(func(h http.Header) {
+		for k, v := range headers {
+			h.Set(k, v)
+		}
+	})
+}
+
+func DelHeader(keys ...string) Middleware {
+	return SetHeader(func(h http.Header) {
+		for _, k := range keys {
+			h.Del(k)
+		}
+	})
+}
+
+func SetContentType(contentType string) Middleware {
+	return SetHeader(func(h http.Header) {
+		h.Set("Content-Type", contentType)
+	})
+}
+
+func SetUserAgent(userAgent string) Middleware {
+	return SetHeader(func(h http.Header) {
+		h.Set("User-Agent", userAgent)
+	})
 }

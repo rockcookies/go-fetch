@@ -133,10 +133,10 @@ func createMultipart(w *multipart.Writer, mf *MultipartField) error {
 	return err
 }
 
-// Multipart creates middleware that builds a multipart/form-data request body.
+// SetMultipart creates middleware that builds a multipart/form-data request body.
 // It streams the fields using a pipe to avoid loading everything into memory.
 // Supports progress callbacks for individual fields.
-func Multipart(fields []*MultipartField, opts ...func(*MultipartOptions)) Middleware {
+func SetMultipart(fields []*MultipartField, opts ...func(*MultipartOptions)) Middleware {
 	options := applyOptions(&MultipartOptions{}, opts...)
 
 	return func(handler Handler) Handler {

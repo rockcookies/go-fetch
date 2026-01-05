@@ -4,7 +4,6 @@ package fetch
 import (
 	"net/http"
 	"slices"
-	"sync"
 	"time"
 )
 
@@ -12,7 +11,6 @@ import (
 // It wraps an http.Client and applies middleware chains to requests.
 // All methods are safe for concurrent use.
 type Dispatcher struct {
-	lock        sync.Mutex
 	client      *http.Client
 	middlewares []Middleware
 }
@@ -60,9 +58,6 @@ func (d *Dispatcher) SetClient(client *http.Client) {
 		return
 	}
 
-	d.lock.Lock()
-	defer d.lock.Unlock()
-
 	d.client = client
 }
 
@@ -71,13 +66,17 @@ func (d *Dispatcher) Middlewares() []Middleware {
 	return d.middlewares
 }
 
-// Use appends middleware to the dispatcher's middleware chain.
-// This operation is safe for concurrent use.
-func (d *Dispatcher) Use(middlewares ...Middleware) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
+// SetMiddlewares replaces the current middleware chain.
+func (d *Dispatcher) SetMiddlewares(middlewares ...Middleware) {
+	d.middlewares = middlewares
+}
 
-	d.middlewares = append(d.middlewares, middlewares...)
+// With appends middleware to the dispatcher's middleware chain.
+// This operation is safe for concurrent use.
+func (d *Dispatcher) With(middlewares ...Middleware) *Dispatcher {
+	d2 := d.Clone()
+	d2.middlewares = append(d2.middlewares, middlewares...)
+	return d2
 }
 
 // Clone creates a shallow copy of the Dispatcher.
@@ -91,7 +90,7 @@ func (d *Dispatcher) Clone() *Dispatcher {
 
 // Do executes the HTTP request with the dispatcher's middleware chain
 // plus any additional middlewares provided.
-func (d *Dispatcher) Do(req *http.Request, middlewares ...Middleware) (*http.Response, error) {
+func (d *Dispatcher) Dispatch(req *http.Request, middlewares ...Middleware) (*http.Response, error) {
 	client := cloneClient(d.client)
 
 	var handler Handler = HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
