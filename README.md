@@ -1,15 +1,15 @@
 # go-fetch
 
-A simple, composable HTTP client for Go with middleware support.
+A composable HTTP client for Go built on `net/http` with middleware support.
 
-## Philosophy
+## Why go-fetch?
 
-**Simple is better than complex.** This library follows Go's "less is more" philosophy:
+**Simplicity is the ultimate sophistication.** No frameworks, no magic, no unnecessary abstractions.
 
-- Built on `net/http` standard library
-- No unnecessary abstractions or dependencies
-- Middleware-based composition for flexibility
-- Explicit error handling throughout
+- Pure `net/http` - zero non-standard dependencies
+- Middleware composition for clean request/response handling
+- Explicit error handling - never ignore errors
+- Table-driven tests with high coverage
 
 ## Installation
 
@@ -28,10 +28,8 @@ import (
 )
 
 func main() {
-    // Create a dispatcher (HTTP client wrapper)
     dispatcher := fetch.NewDispatcher(nil)
 
-    // Make a simple GET request
     resp := dispatcher.NewRequest().Send("GET", "https://api.example.com/users")
     defer resp.Close()
 
@@ -49,64 +47,56 @@ func main() {
 
 ### Dispatcher
 
-The `Dispatcher` wraps an `http.Client` and manages middleware chains. It's safe for concurrent use.
+Wraps `http.Client` and manages middleware chains. Thread-safe.
 
 ```go
-// Create with default client (30s timeout)
-dispatcher := fetch.NewDispatcher(nil)
+dispatcher := fetch.NewDispatcher(nil) // 30s default timeout
 
-// Or provide your own client
+// Custom client
 client := &http.Client{Timeout: 10 * time.Second}
 dispatcher := fetch.NewDispatcher(client)
 
-// Add global middleware
-dispatcher.Use(middleware1, middleware2)
+// Global middleware
+dispatcher.Use(authMiddleware)
 ```
 
 ### Request
 
-The `Request` type accumulates middleware before execution:
+Accumulates middleware before execution:
 
 ```go
 req := dispatcher.NewRequest()
 req.Use(customMiddleware)
-req.JSON(map[string]string{"name": "John"})
-resp := req.Send("POST", "https://api.example.com/users")
+resp := req.JSON(map[string]string{"name": "John"}).Send("POST", url)
+defer resp.Close()
 ```
 
 ### Middleware
 
-Middleware wraps handlers to add cross-cutting concerns:
+Wraps handlers for cross-cutting concerns:
 
 ```go
-type Middleware func(Handler) Handler
-
-// Example: Add authentication header
 authMiddleware := func(next fetch.Handler) fetch.Handler {
     return fetch.HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
         req.Header.Set("Authorization", "Bearer token")
         return next.Handle(client, req)
     })
 }
-
-dispatcher.Use(authMiddleware)
 ```
 
 ## Features
 
-### Body Encoding
+### Request Body
 
 **JSON:**
 ```go
-data := map[string]string{"name": "John"}
-resp := req.JSON(data).Send("POST", url)
+resp := req.JSON(map[string]string{"name": "John"}).Send("POST", url)
 defer resp.Close()
 ```
 
 **XML:**
 ```go
-data := User{Name: "John"}
-resp := req.XML(data).Send("POST", url)
+resp := req.XML(User{Name: "John"}).Send("POST", url)
 defer resp.Close()
 ```
 
@@ -120,16 +110,14 @@ defer resp.Close()
 
 **Raw Body:**
 ```go
-reader := strings.NewReader("raw data")
-resp := req.Body(reader).Send("POST", url)
+resp := req.Body(strings.NewReader("data")).Send("POST", url)
 defer resp.Close()
 ```
 
 **Lazy Body:**
 ```go
 resp := req.BodyGet(func() (io.Reader, error) {
-    // Body is only computed when needed
-    return loadDataFromFile()
+    return loadDataFromFile() // Computed only when needed
 }).Send("POST", url)
 defer resp.Close()
 ```
@@ -145,174 +133,56 @@ resp := req.Multipart(fields).Send("POST", url)
 defer resp.Close()
 ```
 
-### URL Building
-
-```go
-resp := req.Send("GET", "https://api.example.com/search?q=go")
-defer resp.Close()
-
-// Or use helper
-resp := req.Send("GET", fetch.BuildURL("https://api.example.com/search",
-    fetch.WithQuery("q", "go"),
-    fetch.WithQuery("limit", "10"),
-))
-defer resp.Close()
-```
-
 ### Response Handling
 
 ```go
 resp := req.Send("GET", url)
-defer resp.Close()  // Always defer Close() - safe even when Error is present
+defer resp.Close()  // Always defer - safe with errors
 
-// Check error first
 if resp.Error != nil {
-    return resp.Error
+    return fmt.Errorf("request failed: %w", resp.Error) // Explicit wrapping
 }
 
 // Access response
 fmt.Println(resp.RawResponse.StatusCode)
-fmt.Println(resp.Header.Get("Content-Type"))
-
-// Read body as string
 body := resp.String()
 
-// Or read as bytes
-// bytes := resp.Bytes()
-
-// Or decode JSON
-// var result MyStruct
-// err := resp.JSON(&result)
+// Decode JSON
+var result MyStruct
+if err := resp.JSON(&result); err != nil {
+    return fmt.Errorf("decode failed: %w", err)
+}
 ```
 
-### Custom Headers and Options
+### Headers & Cookies
 
 ```go
-req.UseFuncs(func(r *http.Request) {
-    r.Header.Set("User-Agent", "MyApp/1.0")
-    r.Header.Set("Accept", "application/json")
-})
+// Headers
+dispatcher.Use(fetch.HeaderFuncs(func(h http.Header) {
+    h.Set("User-Agent", "MyApp/1.0")
+}))
+
+// Cookies
+dispatcher.Use(fetch.CookiesAdd(&http.Cookie{
+    Name:  "session",
+    Value: "token123",
+}))
 ```
 
 ### Client Configuration
 
-Customize the HTTP client behavior using `ClientFuncs` middleware:
-
 ```go
-// Configure timeout and redirect behavior
-dispatcher.Use(fetch.ClientFuncs(
-    func(c *http.Client) {
-        c.Timeout = 10 * time.Second
-    },
-    func(c *http.Client) {
-        c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-            return http.ErrUseLastResponse // Disable redirects
-        }
-    },
-))
-
-// Or configure per-request
-req := dispatcher.NewRequest()
-req.Use(fetch.ClientFuncs(func(c *http.Client) {
-    c.Timeout = 5 * time.Second
+dispatcher.Use(fetch.ClientFuncs(func(c *http.Client) {
+    c.Timeout = 10 * time.Second
+    c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+        return http.ErrUseLastResponse // Disable redirects
+    }
 }))
-```
-
-### Header Manipulation
-
-Use `HeaderFuncs` middleware for flexible header manipulation:
-
-```go
-// Set headers at dispatcher level
-dispatcher.Use(fetch.HeaderFuncs(func(h http.Header) {
-    h.Set("User-Agent", "MyApp/1.0")
-    h.Set("Accept", "application/json")
-}))
-
-// Or per-request with multiple operations
-req.Use(fetch.HeaderFuncs(
-    func(h http.Header) {
-        h.Set("Authorization", "Bearer token123")
-    },
-    func(h http.Header) {
-        h.Add("X-Custom", "value1")
-        h.Add("X-Custom", "value2") // Multiple values
-    },
-))
-```
-
-### Cookie Management
-
-Manage cookies using `CookiesAdd` and `CookiesRemove` middleware:
-
-```go
-// Add cookies to requests
-sessionCookie := &http.Cookie{
-    Name:  "session_id",
-    Value: "abc123",
-}
-authCookie := &http.Cookie{
-    Name:  "auth_token",
-    Value: "xyz789",
-}
-
-dispatcher.Use(fetch.CookiesAdd(sessionCookie, authCookie))
-
-// Or add/remove per-request
-req.Use(fetch.CookiesAdd(&http.Cookie{Name: "tracking", Value: "value"}))
-req.Use(fetch.CookiesRemove()) // Remove all cookies
-```
-
-### Headers Middleware
-
-Configure headers at the dispatcher or request level using middleware:
-
-```go
-// Global header configuration
-dispatcher.Use(fetch.PrepareHeaderMiddleware())
-dispatcher.Use(fetch.SetHeaderOptions(func(opts *fetch.HeaderOptions) {
-    opts.Header.Set("User-Agent", "MyApp/1.0")
-    opts.Header.Set("Accept", "application/json")
-}))
-
-// Context-level headers
-ctx := fetch.WithHeaderOptions(context.Background(), func(opts *fetch.HeaderOptions) {
-    opts.Header.Set("Authorization", "Bearer token123")
-})
-req.UseFuncs(func(r *http.Request) {
-    *r = *r.WithContext(ctx)
-})
-```
-
-### Cookies Middleware
-
-Manage cookies using middleware for consistent cookie handling:
-
-```go
-// Add cookies at the dispatcher level
-dispatcher.Use(fetch.PrepareCookieMiddleware())
-dispatcher.Use(fetch.SetCookieOptions(func(opts *fetch.CookieOptions) {
-    opts.Cookies = append(opts.Cookies, &http.Cookie{
-        Name:  "session",
-        Value: "token123",
-    })
-}))
-
-// Context-level cookies
-ctx := fetch.WithCookieOptions(context.Background(), func(opts *fetch.CookieOptions) {
-    opts.Cookies = append(opts.Cookies, &http.Cookie{
-        Name:  "auth",
-        Value: "secret",
-    })
-})
-req.UseFuncs(func(r *http.Request) {
-    *r = *r.WithContext(ctx)
-})
 ```
 
 ## Advanced Usage
 
-### Cloning Requests
+### Request Cloning
 
 ```go
 baseReq := dispatcher.NewRequest()
@@ -320,77 +190,55 @@ baseReq.UseFuncs(func(r *http.Request) {
     r.Header.Set("Authorization", "Bearer token")
 })
 
-// Clone for different endpoints
 req1 := baseReq.Clone().Send("GET", "/users")
 req2 := baseReq.Clone().Send("GET", "/posts")
 ```
 
 ### Request Dumping
 
-The `dump` package provides middleware for debugging:
-
 ```go
 import "github.com/rockcookies/go-fetch/dump"
 
-// Dump all requests and responses
-dispatcher.Use(dump.Middleware())
+dispatcher.Use(dump.Middleware()) // Debug all requests/responses
 
-// Dump with filters
-dispatcher.Use(dump.Middleware(
-    dump.WithFilter(dump.SkipResponseBody()),
-))
+// With filters
+dispatcher.Use(dump.Middleware(dump.WithFilter(dump.SkipResponseBody())))
 ```
 
-### Error Handling
+## Development Philosophy
 
-All errors follow explicit handling patterns:
+Follows strict principles:
 
-```go
-resp := req.Send("GET", url)
-defer resp.Close()  // Safe to defer immediately - handles all error cases
-
-if resp.Error != nil {
-    // Error is wrapped with context
-    return fmt.Errorf("fetch failed: %w", resp.Error)
-}
-
-if resp.RawResponse.StatusCode >= 400 {
-    // Handle HTTP errors
-    return fmt.Errorf("HTTP error: %d", resp.RawResponse.StatusCode)
-}
-```
-
-## Design Principles
-
-This library strictly follows:
-
-1. **Simplicity First** (YAGNI) - Only essential features
-2. **Standard Library First** - Built on `net/http`
-3. **Explicit Over Implicit** - No magic, clear error handling
+1. **Simplicity First (YAGNI)** - Only essential features, no over-engineering
+2. **Standard Library First** - Built on `net/http`, avoid external dependencies
+3. **Explicit Over Implicit** - Never ignore errors, always wrap with context
 4. **Single Responsibility** - Each component does one thing well
+5. **Test-First Imperative** - TDD with table-driven tests (Red-Green-Refactor)
 
-See [docs/constitution.md](docs/constitution.md) for the complete development philosophy.
+Read [docs/constitution.md](docs/constitution.md) for complete development constitution.
 
 ## Testing
 
-The library follows test-driven development with table-driven tests:
-
 ```bash
-go test ./...
-go test -v -race ./...
+go test ./...           # Run all tests
+go test -v -race ./...  # With race detector
+go test -cover ./...    # Coverage report
 ```
+
+All code follows TDD: write failing test → make it pass → refactor.
 
 ## License
 
-See [LICENSE](LICENSE) file.
+See [LICENSE](LICENSE).
 
 ## Contributing
 
-Contributions must follow the project constitution:
+Pull requests must:
 
-- Write tests first (TDD)
-- Keep it simple (no over-engineering)
+- Start with a failing test (TDD)
+- Keep it simple (no abstractions without clear need)
 - Use standard library when possible
-- Explicit error handling
+- Handle all errors explicitly (never `_` errors)
+- Add table-driven tests for edge cases
 
-See [docs/constitution.md](docs/constitution.md) for details.
+Constitutional review: all changes must comply with [docs/constitution.md](docs/constitution.md).

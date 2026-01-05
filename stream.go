@@ -7,6 +7,10 @@ import (
 
 // callbackWriter wraps an io.Writer to invoke a callback periodically during writes.
 // Used internally for progress tracking during multipart uploads.
+//
+// The callback is invoked either when the total size is reached or at regular intervals
+// specified by interval. This prevents excessive callback invocations for large uploads
+// while still providing responsive progress updates.
 type callbackWriter struct {
 	io.Writer
 	written   int64

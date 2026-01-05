@@ -11,6 +11,11 @@ import (
 	"github.com/rockcookies/go-fetch/internal/bufferpool"
 )
 
+// SetBody returns a middleware that sets the request body from an io.Reader.
+// If the reader implements Len() int (like bytes.Buffer), Content-Length is automatically set.
+//
+// Note: The reader is consumed during the request and cannot be retried.
+// For retry support, use SetBodyGet or SetBodyGetBytes instead.
 func SetBody(reader io.Reader) Middleware {
 	return func(handler Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {

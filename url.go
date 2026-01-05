@@ -7,6 +7,17 @@ import (
 	"strings"
 )
 
+// SetBaseURL returns a middleware that sets the base URL (scheme and host) for the request.
+// If the URI doesn't include a scheme (http:// or https://), it defaults to http://.
+//
+// This is useful for targeting different environments (dev, staging, prod) or when the
+// base URL needs to be determined dynamically.
+//
+// Example:
+//
+//	// Both will set the base URL to http://api.example.com
+//	fetch.SetBaseURL("http://api.example.com")
+//	fetch.SetBaseURL("api.example.com")
 func SetBaseURL(uri string) Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -27,6 +38,13 @@ func SetBaseURL(uri string) Middleware {
 	}
 }
 
+// SetPathSuffix returns a middleware that appends a path segment to the request URL's path.
+// This is useful for adding API versions or resource identifiers to the end of a path.
+//
+// Example:
+//
+//	// Request URL: /api/users
+//	// After SetPathSuffix("/123"): /api/users/123
 func SetPathSuffix(suffix string) Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -36,6 +54,13 @@ func SetPathSuffix(suffix string) Middleware {
 	}
 }
 
+// SetPathPrefix returns a middleware that prepends a path segment to the request URL's path.
+// This is useful for adding API base paths or namespace prefixes.
+//
+// Example:
+//
+//	// Request URL: /users
+//	// After SetPathPrefix("/api/v1"): /api/v1/users
 func SetPathPrefix(prefix string) Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -45,6 +70,17 @@ func SetPathPrefix(prefix string) Middleware {
 	}
 }
 
+// SetPathParams returns a middleware that replaces path parameter placeholders with actual values.
+// Placeholders should be in the format {key}, and they will be replaced with the corresponding
+// value from the params map.
+//
+// This is useful for RESTful APIs with path parameters like /users/{id}/posts/{postId}.
+//
+// Example:
+//
+//	// Request URL: /users/{id}/posts/{postId}
+//	// After SetPathParams(map[string]string{"id": "123", "postId": "456"})
+//	// Result: /users/123/posts/456
 func SetPathParams(params map[string]string) Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
