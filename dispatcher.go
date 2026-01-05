@@ -33,6 +33,20 @@ func NewDispatcher(client *http.Client, middlewares ...Middleware) *Dispatcher {
 	}
 }
 
+// NewDispatcherWithTransport creates a new Dispatcher with a custom RoundTripper transport.
+// A default http.Client with 30s timeout is created using the provided transport.
+func NewDispatcherWithTransport(transport http.RoundTripper, middlewares ...Middleware) *Dispatcher {
+	client := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: transport,
+	}
+
+	return &Dispatcher{
+		client:      client,
+		middlewares: middlewares,
+	}
+}
+
 // Client returns the underlying HTTP client.
 func (d *Dispatcher) Client() *http.Client {
 	return d.client

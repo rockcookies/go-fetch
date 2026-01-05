@@ -108,3 +108,59 @@ func (r *Request) Send(method string, u string) *Response {
 	resp, err := r.Do(req)
 	return buildResponse(req, resp, err)
 }
+
+// Get method does GET HTTP request. It's defined in section 9.3.1 of [RFC 9110].
+//
+// [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.3.1
+func (r *Request) Get(url string) *Response {
+	return r.Send("GET", url)
+}
+
+// Head method does HEAD HTTP request. It's defined in section 9.3.2 of [RFC 9110].
+//
+// [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.3.2
+func (r *Request) Head(url string) *Response {
+	return r.Send("HEAD", url)
+}
+
+// Post method does POST HTTP request. It's defined in section 9.3.3 of [RFC 9110].
+//
+// [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.3.3
+func (r *Request) Post(url string) *Response {
+	return r.Send("POST", url)
+}
+
+// Put method does PUT HTTP request. It's defined in section 9.3.4 of [RFC 9110].
+//
+// [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.3.4
+func (r *Request) Put(url string) *Response {
+	return r.Send("PUT", url)
+}
+
+// Patch method does PATCH HTTP request. It's defined in section 2 of [RFC 5789].
+//
+// [RFC 5789]: https://datatracker.ietf.org/doc/html/rfc5789.html#section-2
+func (r *Request) Patch(url string) *Response {
+	return r.Send("PATCH", url)
+}
+
+// Delete method does DELETE HTTP request. It's defined in section 9.3.5 of [RFC 9110].
+//
+// [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.3.5
+func (r *Request) Delete(url string) *Response {
+	return r.Send("DELETE", url)
+}
+
+// Options method does OPTIONS HTTP request. It's defined in section 9.3.7 of [RFC 9110].
+//
+// [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.3.7
+func (r *Request) Options(url string) *Response {
+	return r.Send("OPTIONS", url)
+}
+
+// Trace method does TRACE HTTP request. It's defined in section 9.3.8 of [RFC 9110].
+//
+// [RFC 9110]: https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.3.8
+func (r *Request) Trace(url string) *Response {
+	return r.Send("TRACE", url)
+}
