@@ -1,9 +1,9 @@
 package fetch
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,266 +11,188 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPrepareClientMiddleware(t *testing.T) {
+func TestClientFuncs(t *testing.T) {
 	tests := []struct {
-		name           string
-		clientOptions  []func(*http.Client)
-		setupContext   func(context.Context) context.Context
-		validateClient func(*testing.T, *http.Client)
+		name          string
+		clientFuncs   []func(*http.Client)
+		verifyClient  func(*testing.T, *http.Client)
+		verifyRequest func(*testing.T, *http.Request)
+		shouldSucceed bool
 	}{
 		{
-			name: "no options - uses default client",
-			validateClient: func(t *testing.T, client *http.Client) {
-				assert.NotNil(t, client)
-			},
-		},
-		{
-			name: "with context options - applies timeout",
-			setupContext: func(ctx context.Context) context.Context {
-				return WithClientOptions(ctx, func(c *http.Client) {
+			name: "set timeout",
+			clientFuncs: []func(*http.Client){
+				func(c *http.Client) {
 					c.Timeout = 5 * time.Second
-				})
+				},
 			},
-			validateClient: func(t *testing.T, client *http.Client) {
-				assert.Equal(t, 5*time.Second, client.Timeout)
+			verifyClient: func(t *testing.T, c *http.Client) {
+				assert.Equal(t, 5*time.Second, c.Timeout)
 			},
+			shouldSucceed: true,
 		},
 		{
-			name: "multiple options - applies all",
-			setupContext: func(ctx context.Context) context.Context {
-				ctx = WithClientOptions(ctx, func(c *http.Client) {
-					c.Timeout = 10 * time.Second
-				})
-				return WithClientOptions(ctx, func(c *http.Client) {
+			name: "disable redirects",
+			clientFuncs: []func(*http.Client){
+				func(c *http.Client) {
 					c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 						return http.ErrUseLastResponse
 					}
-				})
-			},
-			validateClient: func(t *testing.T, client *http.Client) {
-				assert.Equal(t, 10*time.Second, client.Timeout)
-				assert.NotNil(t, client.CheckRedirect)
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var capturedClient *http.Client
-
-			middleware := PrepareClientMiddleware()
-			handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-				capturedClient = client
-				return &http.Response{StatusCode: 200}, nil
-			}))
-
-			req, err := http.NewRequest("GET", "http://example.com", nil)
-			require.NoError(t, err)
-
-			if tt.setupContext != nil {
-				ctx := tt.setupContext(req.Context())
-				req = req.WithContext(ctx)
-			}
-
-			client := &http.Client{}
-			resp, err := handler.Handle(client, req)
-
-			assert.NoError(t, err)
-			assert.NotNil(t, resp)
-			assert.Equal(t, 200, resp.StatusCode)
-
-			if tt.validateClient != nil {
-				tt.validateClient(t, capturedClient)
-			}
-		})
-	}
-}
-
-func TestSetClientOptions(t *testing.T) {
-	tests := []struct {
-		name           string
-		options        []func(*http.Client)
-		validateClient func(*testing.T, *http.Client)
-	}{
-		{
-			name: "single option - sets timeout",
-			options: []func(*http.Client){
-				func(c *http.Client) {
-					c.Timeout = 30 * time.Second
 				},
 			},
-			validateClient: func(t *testing.T, client *http.Client) {
-				assert.Equal(t, 30*time.Second, client.Timeout)
+			verifyClient: func(t *testing.T, c *http.Client) {
+				assert.NotNil(t, c.CheckRedirect)
 			},
+			shouldSucceed: true,
 		},
 		{
-			name: "multiple options - applies in order",
-			options: []func(*http.Client){
+			name: "multiple client modifications",
+			clientFuncs: []func(*http.Client){
 				func(c *http.Client) {
-					c.Timeout = 1 * time.Minute
+					c.Timeout = 10 * time.Second
 				},
 				func(c *http.Client) {
 					c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-						if len(via) >= 3 {
+						if len(via) >= 2 {
 							return http.ErrUseLastResponse
 						}
 						return nil
 					}
 				},
 			},
-			validateClient: func(t *testing.T, client *http.Client) {
-				assert.Equal(t, 1*time.Minute, client.Timeout)
-				assert.NotNil(t, client.CheckRedirect)
+			verifyClient: func(t *testing.T, c *http.Client) {
+				assert.Equal(t, 10*time.Second, c.Timeout)
+				assert.NotNil(t, c.CheckRedirect)
 			},
+			shouldSucceed: true,
 		},
 		{
-			name:    "no options - client unchanged",
-			options: []func(*http.Client){},
-			validateClient: func(t *testing.T, client *http.Client) {
-				assert.NotNil(t, client)
-			},
+			name:          "no client functions",
+			clientFuncs:   []func(*http.Client){},
+			shouldSucceed: true,
+		},
+		{
+			name:          "nil client functions slice",
+			clientFuncs:   nil,
+			shouldSucceed: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dispatcher := NewDispatcher(nil)
-			req := dispatcher.NewRequest()
-
-			if len(tt.options) > 0 {
-				req = req.Use(SetClientOptions(tt.options...))
-			}
-
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tt.verifyRequest != nil {
+					tt.verifyRequest(t, r)
+				}
 				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("OK"))
 			}))
 			defer server.Close()
 
-			resp := req.Send("GET", server.URL)
-			assert.NoError(t, resp.Error)
-		})
-	}
-}
-
-func TestSetClientOptions_Integration(t *testing.T) {
-	tests := []struct {
-		name     string
-		setupReq func(*Request) *Request
-	}{
-		{
-			name: "custom transport",
-			setupReq: func(req *Request) *Request {
-				return req.Use(SetClientOptions(func(c *http.Client) {
-					c.Transport = &http.Transport{
-						MaxIdleConns: 10,
-					}
-				}))
-			},
-		},
-		{
-			name: "disable redirects",
-			setupReq: func(req *Request) *Request {
-				return req.Use(SetClientOptions(func(c *http.Client) {
-					c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-						return http.ErrUseLastResponse
-					}
-				}))
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
 			dispatcher := NewDispatcher(nil)
-			req := dispatcher.NewRequest()
-
-			if tt.setupReq != nil {
-				req = tt.setupReq(req)
-			}
-
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			}))
-			defer server.Close()
+			req := dispatcher.NewRequest().Use(ClientFuncs(tt.clientFuncs...))
 
 			resp := req.Send("GET", server.URL)
-			assert.NoError(t, resp.Error)
-		})
-	}
-}
+			defer resp.Close()
 
-func TestWithClientOptions(t *testing.T) {
-	tests := []struct {
-		name    string
-		options []func(*http.Client)
-		verify  func(*testing.T, context.Context)
-	}{
-		{
-			name: "adds single option to context",
-			options: []func(*http.Client){
-				func(c *http.Client) {
-					c.Timeout = 15 * time.Second
-				},
-			},
-			verify: func(t *testing.T, ctx context.Context) {
-				assert.NotNil(t, ctx)
-			},
-		},
-		{
-			name: "adds multiple options to context",
-			options: []func(*http.Client){
-				func(c *http.Client) {
-					c.Timeout = 20 * time.Second
-				},
-				func(c *http.Client) {
-					c.CheckRedirect = nil
-				},
-			},
-			verify: func(t *testing.T, ctx context.Context) {
-				assert.NotNil(t, ctx)
-			},
-		},
-		{
-			name:    "empty options returns valid context",
-			options: []func(*http.Client){},
-			verify: func(t *testing.T, ctx context.Context) {
-				assert.NotNil(t, ctx)
-			},
-		},
-	}
+			if tt.shouldSucceed {
+				require.NoError(t, resp.Error)
+				assert.Equal(t, http.StatusOK, resp.RawResponse.StatusCode)
+			} else {
+				require.Error(t, resp.Error)
+			}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			ctx = WithClientOptions(ctx, tt.options...)
-
-			if tt.verify != nil {
-				tt.verify(t, ctx)
+			// Verify client modifications if verifyClient is provided
+			if tt.verifyClient != nil && tt.shouldSucceed {
+				// Create a new client and apply the functions to verify they work
+				testClient := &http.Client{}
+				for _, f := range tt.clientFuncs {
+					f(testClient)
+				}
+				tt.verifyClient(t, testClient)
 			}
 		})
 	}
 }
 
-func TestWithClientOptions_Chaining(t *testing.T) {
-	ctx := context.Background()
-
-	// Chain multiple WithClientOptions calls
-	ctx = WithClientOptions(ctx, func(c *http.Client) {
-		c.Timeout = 5 * time.Second
-	})
-
-	ctx = WithClientOptions(ctx, func(c *http.Client) {
-		c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
+func TestClientFuncs_Integration(t *testing.T) {
+	redirectCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" && redirectCount < 1 {
+			redirectCount++
+			http.Redirect(w, r, "/final", http.StatusFound)
+			return
 		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("final"))
+	}))
+	defer server.Close()
+
+	t.Run("prevent redirect", func(t *testing.T) {
+		redirectCount = 0
+		dispatcher := NewDispatcher(nil)
+		req := dispatcher.NewRequest().Use(ClientFuncs(func(c *http.Client) {
+			c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			}
+		}))
+
+		resp := req.Send("GET", server.URL+"/redirect")
+		defer resp.Close()
+
+		require.NoError(t, resp.Error)
+		assert.Equal(t, http.StatusFound, resp.RawResponse.StatusCode)
+		assert.Equal(t, 1, redirectCount)
 	})
 
-	assert.NotNil(t, ctx)
+	t.Run("allow redirect", func(t *testing.T) {
+		redirectCount = 0
+		dispatcher := NewDispatcher(nil)
+		req := dispatcher.NewRequest() // No ClientFuncs - default behavior follows redirects
 
-	// Verify context can be used in request
-	req, err := http.NewRequest("GET", "http://example.com", nil)
-	require.NoError(t, err)
+		resp := req.Send("GET", server.URL+"/redirect")
+		defer resp.Close()
 
-	req = req.WithContext(ctx)
-	assert.NotNil(t, req.Context())
+		require.NoError(t, resp.Error)
+		assert.Equal(t, http.StatusOK, resp.RawResponse.StatusCode)
+		assert.Equal(t, "final", resp.String())
+	})
+}
+
+func TestClientFuncs_WithTimeout(t *testing.T) {
+	slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer slowServer.Close()
+
+	t.Run("timeout triggers", func(t *testing.T) {
+		dispatcher := NewDispatcher(nil)
+		req := dispatcher.NewRequest().Use(ClientFuncs(func(c *http.Client) {
+			c.Timeout = 50 * time.Millisecond
+		}))
+
+		resp := req.Send("GET", slowServer.URL)
+		defer resp.Close()
+
+		require.Error(t, resp.Error)
+		// Error message contains "deadline" or "timeout"
+		errMsg := resp.Error.Error()
+		assert.True(t,
+			strings.Contains(errMsg, "deadline") || strings.Contains(errMsg, "timeout"),
+			"expected timeout or deadline error, got: %s", errMsg)
+	})
+
+	t.Run("sufficient timeout succeeds", func(t *testing.T) {
+		dispatcher := NewDispatcher(nil)
+		req := dispatcher.NewRequest().Use(ClientFuncs(func(c *http.Client) {
+			c.Timeout = 500 * time.Millisecond
+		}))
+
+		resp := req.Send("GET", slowServer.URL)
+		defer resp.Close()
+
+		require.NoError(t, resp.Error)
+		assert.Equal(t, http.StatusOK, resp.RawResponse.StatusCode)
+	})
 }

@@ -194,6 +194,75 @@ req.UseFuncs(func(r *http.Request) {
 })
 ```
 
+### Client Configuration
+
+Customize the HTTP client behavior using `ClientFuncs` middleware:
+
+```go
+// Configure timeout and redirect behavior
+dispatcher.Use(fetch.ClientFuncs(
+    func(c *http.Client) {
+        c.Timeout = 10 * time.Second
+    },
+    func(c *http.Client) {
+        c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+            return http.ErrUseLastResponse // Disable redirects
+        }
+    },
+))
+
+// Or configure per-request
+req := dispatcher.NewRequest()
+req.Use(fetch.ClientFuncs(func(c *http.Client) {
+    c.Timeout = 5 * time.Second
+}))
+```
+
+### Header Manipulation
+
+Use `HeaderFuncs` middleware for flexible header manipulation:
+
+```go
+// Set headers at dispatcher level
+dispatcher.Use(fetch.HeaderFuncs(func(h http.Header) {
+    h.Set("User-Agent", "MyApp/1.0")
+    h.Set("Accept", "application/json")
+}))
+
+// Or per-request with multiple operations
+req.Use(fetch.HeaderFuncs(
+    func(h http.Header) {
+        h.Set("Authorization", "Bearer token123")
+    },
+    func(h http.Header) {
+        h.Add("X-Custom", "value1")
+        h.Add("X-Custom", "value2") // Multiple values
+    },
+))
+```
+
+### Cookie Management
+
+Manage cookies using `CookiesAdd` and `CookiesRemove` middleware:
+
+```go
+// Add cookies to requests
+sessionCookie := &http.Cookie{
+    Name:  "session_id",
+    Value: "abc123",
+}
+authCookie := &http.Cookie{
+    Name:  "auth_token",
+    Value: "xyz789",
+}
+
+dispatcher.Use(fetch.CookiesAdd(sessionCookie, authCookie))
+
+// Or add/remove per-request
+req.Use(fetch.CookiesAdd(&http.Cookie{Name: "tracking", Value: "value"}))
+req.Use(fetch.CookiesRemove()) // Remove all cookies
+```
+
 ### Headers Middleware
 
 Configure headers at the dispatcher or request level using middleware:

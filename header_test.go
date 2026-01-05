@@ -1,297 +1,286 @@
 package fetch
 
 import (
-	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestPrepareHeaderMiddleware(t *testing.T) {
+func TestHeaderFuncs(t *testing.T) {
 	tests := []struct {
 		name            string
-		options         []func(*HeaderOptions)
-		expectedHeaders map[string]string
+		headerFuncs     []func(http.Header)
+		expectedHeaders map[string][]string
 	}{
 		{
-			name:            "no headers configured",
-			options:         []func(*HeaderOptions){},
-			expectedHeaders: map[string]string{},
-		},
-		{
-			name: "single header",
-			options: []func(*HeaderOptions){
-				func(opts *HeaderOptions) {
-					opts.Header.Set("X-Custom", "value")
+			name: "set single header",
+			headerFuncs: []func(http.Header){
+				func(h http.Header) {
+					h.Set("X-Custom", "value")
 				},
 			},
-			expectedHeaders: map[string]string{
-				"X-Custom": "value",
+			expectedHeaders: map[string][]string{
+				"X-Custom": {"value"},
 			},
 		},
 		{
-			name: "multiple headers",
-			options: []func(*HeaderOptions){
-				func(opts *HeaderOptions) {
-					opts.Header.Set("X-Custom", "value1")
-					opts.Header.Set("X-Another", "value2")
+			name: "set multiple headers",
+			headerFuncs: []func(http.Header){
+				func(h http.Header) {
+					h.Set("User-Agent", "MyApp/1.0")
+					h.Set("Accept", "application/json")
+					h.Set("Authorization", "Bearer token123")
 				},
 			},
-			expectedHeaders: map[string]string{
-				"X-Custom":  "value1",
-				"X-Another": "value2",
+			expectedHeaders: map[string][]string{
+				"User-Agent":    {"MyApp/1.0"},
+				"Accept":        {"application/json"},
+				"Authorization": {"Bearer token123"},
 			},
 		},
 		{
-			name: "headers from multiple option functions",
-			options: []func(*HeaderOptions){
-				func(opts *HeaderOptions) {
-					opts.Header.Set("X-First", "first")
-				},
-				func(opts *HeaderOptions) {
-					opts.Header.Set("X-Second", "second")
+			name: "add multiple values for same header",
+			headerFuncs: []func(http.Header){
+				func(h http.Header) {
+					h.Add("X-Custom", "value1")
+					h.Add("X-Custom", "value2")
+					h.Add("X-Custom", "value3")
 				},
 			},
-			expectedHeaders: map[string]string{
-				"X-First":  "first",
-				"X-Second": "second",
+			expectedHeaders: map[string][]string{
+				"X-Custom": {"value1", "value2", "value3"},
 			},
 		},
 		{
-			name: "common request headers",
-			options: []func(*HeaderOptions){
-				func(opts *HeaderOptions) {
-					opts.Header.Set("User-Agent", "MyApp/1.0")
-					opts.Header.Set("Accept", "application/json")
-					opts.Header.Set("Content-Type", "application/json")
+			name: "delete header",
+			headerFuncs: []func(http.Header){
+				func(h http.Header) {
+					h.Set("X-Temp", "temporary")
+					h.Del("X-Temp")
 				},
 			},
-			expectedHeaders: map[string]string{
-				"User-Agent":   "MyApp/1.0",
-				"Accept":       "application/json",
-				"Content-Type": "application/json",
+			expectedHeaders: map[string][]string{},
+		},
+		{
+			name: "multiple functions in sequence",
+			headerFuncs: []func(http.Header){
+				func(h http.Header) {
+					h.Set("X-First", "first")
+				},
+				func(h http.Header) {
+					h.Set("X-Second", "second")
+				},
+				func(h http.Header) {
+					h.Set("X-Third", "third")
+				},
 			},
+			expectedHeaders: map[string][]string{
+				"X-First":  {"first"},
+				"X-Second": {"second"},
+				"X-Third":  {"third"},
+			},
+		},
+		{
+			name: "override existing header",
+			headerFuncs: []func(http.Header){
+				func(h http.Header) {
+					h.Set("X-Value", "original")
+					h.Set("X-Value", "updated")
+				},
+			},
+			expectedHeaders: map[string][]string{
+				"X-Value": {"updated"},
+			},
+		},
+		{
+			name:            "empty functions slice",
+			headerFuncs:     []func(http.Header){},
+			expectedHeaders: map[string][]string{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			middleware := PrepareHeaderMiddleware()
-			handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-				for name, expectedValue := range tt.expectedHeaders {
-					actualValue := req.Header.Get(name)
-					assert.Equal(t, expectedValue, actualValue, "header %s mismatch", name)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				for name, expectedValues := range tt.expectedHeaders {
+					actualValues := r.Header[name]
+					assert.Equal(t, expectedValues, actualValues, "header %s mismatch", name)
 				}
-				return &http.Response{StatusCode: 200}, nil
+
+				// Verify headers that should not be present
+				for headerName := range r.Header {
+					if _, expected := tt.expectedHeaders[headerName]; !expected {
+						// Skip standard headers added by http client
+						standardHeaders := map[string]bool{
+							"Accept-Encoding": true,
+							"User-Agent":      true,
+							"Content-Length":  true,
+							"Content-Type":    true,
+							"Host":            true,
+						}
+						if !standardHeaders[headerName] {
+							t.Errorf("unexpected header present: %s", headerName)
+						}
+					}
+				}
+
+				w.WriteHeader(http.StatusOK)
 			}))
+			defer server.Close()
 
-			req, err := http.NewRequest("GET", "http://example.com", nil)
-			require.NoError(t, err)
+			dispatcher := NewDispatcher(nil)
+			req := dispatcher.NewRequest().Use(HeaderFuncs(tt.headerFuncs...))
 
-			// Apply options to context
-			if len(tt.options) > 0 {
-				ctx := req.Context()
-				for _, opt := range tt.options {
-					ctx = WithHeaderOptions(ctx, opt)
-				}
-				req = req.WithContext(ctx)
-			}
+			resp := req.Send("GET", server.URL)
+			defer resp.Close()
 
-			client := &http.Client{}
-			_, err = handler.Handle(client, req)
-			assert.NoError(t, err)
+			require.NoError(t, resp.Error)
+			assert.Equal(t, http.StatusOK, resp.RawResponse.StatusCode)
 		})
 	}
 }
 
-func TestSetHeaderOptions(t *testing.T) {
-	tests := []struct {
-		name            string
-		options         []func(*HeaderOptions)
-		expectedHeaders map[string]string
-	}{
-		{
-			name: "single option function",
-			options: []func(*HeaderOptions){
-				func(opts *HeaderOptions) {
-					opts.Header.Set("X-Test", "value")
-				},
-			},
-			expectedHeaders: map[string]string{
-				"X-Test": "value",
-			},
-		},
-		{
-			name: "multiple option functions",
-			options: []func(*HeaderOptions){
-				func(opts *HeaderOptions) {
-					opts.Header.Set("X-First", "val1")
-				},
-				func(opts *HeaderOptions) {
-					opts.Header.Set("X-Second", "val2")
-				},
-			},
-			expectedHeaders: map[string]string{
-				"X-First":  "val1",
-				"X-Second": "val2",
-			},
-		},
-		{
-			name: "authentication headers",
-			options: []func(*HeaderOptions){
-				func(opts *HeaderOptions) {
-					opts.Header.Set("Authorization", "Bearer token123")
-					opts.Header.Set("X-API-Key", "api-key-456")
-				},
-			},
-			expectedHeaders: map[string]string{
-				"Authorization": "Bearer token123",
-				"X-API-Key":     "api-key-456",
-			},
-		},
-	}
+func TestHeaderFuncs_WithNilSlice(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			setHeaderMW := SetHeaderOptions(tt.options...)
-			prepareMW := PrepareHeaderMiddleware()
+	dispatcher := NewDispatcher(nil)
+	req := dispatcher.NewRequest().Use(HeaderFuncs(nil...))
 
-			// Compose middlewares: SetHeaderOptions -> PrepareHeaderMiddleware -> Handler
-			handler := setHeaderMW(prepareMW(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-				for name, expectedValue := range tt.expectedHeaders {
-					actualValue := req.Header.Get(name)
-					assert.Equal(t, expectedValue, actualValue, "header %s mismatch", name)
-				}
-				return &http.Response{StatusCode: 200}, nil
-			})))
+	resp := req.Send("GET", server.URL)
+	defer resp.Close()
 
-			req, err := http.NewRequest("GET", "http://example.com", nil)
-			require.NoError(t, err)
-
-			client := &http.Client{}
-			_, err = handler.Handle(client, req)
-			assert.NoError(t, err)
-		})
-	}
+	require.NoError(t, resp.Error)
+	assert.Equal(t, http.StatusOK, resp.RawResponse.StatusCode)
 }
 
-func TestWithHeaderOptions(t *testing.T) {
-	tests := []struct {
-		name     string
-		ctx      context.Context
-		options  []func(*HeaderOptions)
-		validate func(t *testing.T, ctx context.Context)
-	}{
-		{
-			name: "add options to context",
-			ctx:  context.Background(),
-			options: []func(*HeaderOptions){
-				func(opts *HeaderOptions) {
-					opts.Header.Set("X-Context", "value")
-				},
-			},
-			validate: func(t *testing.T, ctx context.Context) {
-				assert.NotNil(t, ctx)
-				// Verify context contains header options
-				val, ok := prepareHeaderKey.GetValue(ctx)
-				assert.True(t, ok)
-				assert.Len(t, val, 1)
-			},
-		},
-		{
-			name: "nil context creates background",
-			ctx:  nil,
-			options: []func(*HeaderOptions){
-				func(opts *HeaderOptions) {
-					opts.Header.Set("X-Header", "val")
-				},
-			},
-			validate: func(t *testing.T, ctx context.Context) {
-				assert.NotNil(t, ctx)
-			},
-		},
-		{
-			name: "multiple options accumulated",
-			ctx:  context.Background(),
-			options: []func(*HeaderOptions){
-				func(opts *HeaderOptions) {
-					opts.Header.Set("X-H1", "v1")
-				},
-				func(opts *HeaderOptions) {
-					opts.Header.Set("X-H2", "v2")
-				},
-			},
-			validate: func(t *testing.T, ctx context.Context) {
-				val, ok := prepareHeaderKey.GetValue(ctx)
-				assert.True(t, ok)
-				assert.Len(t, val, 2)
-			},
-		},
-	}
+func TestHeaderFuncs_MultipleMiddlewares(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "value1", r.Header.Get("X-First"))
+		assert.Equal(t, "value2", r.Header.Get("X-Second"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := WithHeaderOptions(tt.ctx, tt.options...)
-			tt.validate(t, ctx)
-		})
-	}
-}
-
-func TestHeaderOptions_Integration(t *testing.T) {
-	t.Run("headers from context", func(t *testing.T) {
-		middleware := PrepareHeaderMiddleware()
-		handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			assert.Equal(t, "ctx_value", req.Header.Get("X-Context-Header"))
-			return &http.Response{StatusCode: 200}, nil
+	dispatcher := NewDispatcher(nil)
+	req := dispatcher.NewRequest().
+		Use(HeaderFuncs(func(h http.Header) {
+			h.Set("X-First", "value1")
+		})).
+		Use(HeaderFuncs(func(h http.Header) {
+			h.Set("X-Second", "value2")
 		}))
 
-		req, _ := http.NewRequest("GET", "http://example.com", nil)
-		ctx := WithHeaderOptions(req.Context(), func(opts *HeaderOptions) {
-			opts.Header.Set("X-Context-Header", "ctx_value")
-		})
-		req = req.WithContext(ctx)
+	resp := req.Send("GET", server.URL)
+	defer resp.Close()
 
-		client := &http.Client{}
-		_, err := handler.Handle(client, req)
-		assert.NoError(t, err)
-	})
+	require.NoError(t, resp.Error)
+	assert.Equal(t, http.StatusOK, resp.RawResponse.StatusCode)
+}
 
-	t.Run("headers from SetHeaderOptions middleware", func(t *testing.T) {
-		setHeaderMW := SetHeaderOptions(func(opts *HeaderOptions) {
-			opts.Header.Set("X-Middleware-Header", "mw_value")
-		})
-		prepareMW := PrepareHeaderMiddleware()
+func TestHeaderFuncs_Integration(t *testing.T) {
+	t.Run("global dispatcher headers", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "MyApp/1.0", r.Header.Get("User-Agent"))
+			assert.Equal(t, "application/json", r.Header.Get("Accept"))
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
 
-		handler := setHeaderMW(prepareMW(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			assert.Equal(t, "mw_value", req.Header.Get("X-Middleware-Header"))
-			return &http.Response{StatusCode: 200}, nil
-		})))
-
-		req, _ := http.NewRequest("GET", "http://example.com", nil)
-		client := &http.Client{}
-		_, err := handler.Handle(client, req)
-		assert.NoError(t, err)
-	})
-
-	t.Run("overwrite existing header", func(t *testing.T) {
-		middleware := PrepareHeaderMiddleware()
-		handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			assert.Equal(t, "new_value", req.Header.Get("X-Key"))
-			return &http.Response{StatusCode: 200}, nil
+		dispatcher := NewDispatcher(nil)
+		dispatcher.Use(HeaderFuncs(func(h http.Header) {
+			h.Set("User-Agent", "MyApp/1.0")
+			h.Set("Accept", "application/json")
 		}))
 
-		req, _ := http.NewRequest("GET", "http://example.com", nil)
-		req.Header.Set("X-Key", "old_value")
+		req := dispatcher.NewRequest()
+		resp := req.Send("GET", server.URL)
+		defer resp.Close()
 
-		ctx := WithHeaderOptions(req.Context(), func(opts *HeaderOptions) {
-			opts.Header.Set("X-Key", "new_value")
-		})
-		req = req.WithContext(ctx)
-
-		client := &http.Client{}
-		_, err := handler.Handle(client, req)
-		assert.NoError(t, err)
+		require.NoError(t, resp.Error)
+		assert.Equal(t, http.StatusOK, resp.RawResponse.StatusCode)
 	})
+
+	t.Run("request headers override dispatcher headers", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "RequestApp/2.0", r.Header.Get("User-Agent"))
+			assert.Equal(t, "application/json", r.Header.Get("Accept"))
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		dispatcher := NewDispatcher(nil)
+		dispatcher.Use(HeaderFuncs(func(h http.Header) {
+			h.Set("User-Agent", "DispatcherApp/1.0")
+			h.Set("Accept", "application/json")
+		}))
+
+		req := dispatcher.NewRequest()
+		req.Use(HeaderFuncs(func(h http.Header) {
+			h.Set("User-Agent", "RequestApp/2.0")
+		}))
+
+		resp := req.Send("GET", server.URL)
+		defer resp.Close()
+
+		require.NoError(t, resp.Error)
+		assert.Equal(t, http.StatusOK, resp.RawResponse.StatusCode)
+	})
+
+	t.Run("complex header manipulation", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "Bearer token123", r.Header.Get("Authorization"))
+			assert.Equal(t, []string{"gzip", "deflate"}, r.Header["Accept-Encoding"])
+			assert.Empty(t, r.Header.Get("X-Removed"))
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		dispatcher := NewDispatcher(nil)
+		req := dispatcher.NewRequest().Use(HeaderFuncs(
+			func(h http.Header) {
+				h.Set("Authorization", "Bearer token123")
+				h.Set("X-Removed", "will-be-removed")
+			},
+			func(h http.Header) {
+				h.Del("X-Removed")
+				h.Del("Accept-Encoding") // Remove default
+				h.Add("Accept-Encoding", "gzip")
+				h.Add("Accept-Encoding", "deflate")
+			},
+		))
+
+		resp := req.Send("GET", server.URL)
+		defer resp.Close()
+
+		require.NoError(t, resp.Error)
+		assert.Equal(t, http.StatusOK, resp.RawResponse.StatusCode)
+	})
+}
+
+func TestHeaderFuncs_CaseSensitivity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// HTTP headers are case-insensitive, but Go's http.Header canonicalizes them
+		assert.Equal(t, "value", r.Header.Get("X-Custom-Header"))
+		assert.Equal(t, "value", r.Header.Get("x-custom-header"))
+		assert.Equal(t, "value", r.Header.Get("X-CUSTOM-HEADER"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	dispatcher := NewDispatcher(nil)
+	req := dispatcher.NewRequest().Use(HeaderFuncs(func(h http.Header) {
+		h.Set("x-custom-header", "value")
+	}))
+
+	resp := req.Send("GET", server.URL)
+	defer resp.Close()
+
+	require.NoError(t, resp.Error)
+	assert.Equal(t, http.StatusOK, resp.RawResponse.StatusCode)
 }

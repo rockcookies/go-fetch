@@ -1,71 +1,52 @@
 package fetch
 
-import (
-	"context"
-	"net/http"
+import "net/http"
 
-	"github.com/rockcookies/go-fetch/internal/utils"
-)
-
-// CookieOptions holds the configuration for HTTP cookies in a request.
-// The Cookies field contains all cookies that will be attached to the request.
-type CookieOptions struct {
-	Cookies []*http.Cookie
-}
-
-var prepareCookieKey = utils.NewContextKey[[]func(*CookieOptions)]("prepare_cookie")
-
-// PrepareCookieMiddleware creates a middleware that applies cookie options from the request context.
-// It retrieves cookie configuration functions stored in the context, executes them to build
-// the final CookieOptions, and attaches all cookies to the outgoing HTTP request.
-// This middleware should be used in conjunction with SetCookieOptions or WithCookieOptions.
-func PrepareCookieMiddleware() Middleware {
+// CookiesAdd returns a middleware that adds one or more HTTP cookies to the outgoing request.
+// The cookies are added using the AddCookie method, which properly formats them in the
+// Cookie header according to RFC 6265.
+//
+// Multiple calls to AddCookie with the same cookie name will result in multiple cookies
+// being sent. If you need to replace existing cookies, consider using CookiesRemove first.
+//
+// Example:
+//
+//	sessionCookie := &http.Cookie{
+//	    Name:  "session_id",
+//	    Value: "abc123",
+//	}
+//	authCookie := &http.Cookie{
+//	    Name:  "auth_token",
+//	    Value: "xyz789",
+//	}
+//	middleware := fetch.CookiesAdd(sessionCookie, authCookie)
+func CookiesAdd(cookies ...*http.Cookie) Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			options, _ := getOptions(&prepareCookieKey, req, func() *CookieOptions {
-				return &CookieOptions{
-					Cookies: req.Cookies(),
-				}
-			})
-
-			if options == nil {
-				return h.Handle(client, req)
-			}
-
-			req.Header.Del("Cookie")
-			for _, cookie := range options.Cookies {
+			for _, cookie := range cookies {
 				req.AddCookie(cookie)
 			}
-
 			return h.Handle(client, req)
 		})
 	}
 }
 
-// SetCookieOptions creates a middleware that stores cookie configuration functions in the request.
-// These functions will be executed by PrepareCookieMiddleware to configure cookies.
-// Multiple configuration functions can be passed and will be applied in sequence.
+// CookiesRemove returns a middleware that removes all cookies from the outgoing request
+// by deleting the Cookie header. This is useful when you need to ensure no cookies are
+// sent with a request, regardless of what was set previously.
 //
-// WithCookieOptions adds cookie configuration functions to a context.
-// This allows cookie options to be set at the context level and propagated through the request chain.
-// The returned context should be used with http.Request.WithContext.
-//
-// Example:
-//
-//	ctx := fetch.WithCookieOptions(context.Background(), func(opts *fetch.CookieOptions) {
-//	    opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "auth", Value: "secret"})
-//	})
-//	req = req.WithContext(ctx)
+// Note: This removes the entire Cookie header, so all cookies will be removed, not just
+// specific ones. If you need selective cookie removal, consider manipulating the Cookie
+// header directly using HeaderFuncs.
 //
 // Example:
 //
-//	dispatcher.Use(fetch.SetCookieOptions(func(opts *fetch.CookieOptions) {
-//	    opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "session", Value: "token123"})
-//	}))
-func SetCookieOptions(opts ...func(*CookieOptions)) Middleware {
-	return withOptionsMiddleware(&prepareCookieKey, opts...)
-}
-
-func WithCookieOptions(ctx context.Context, opts ...func(*CookieOptions)) context.Context {
-	return withOptions(&prepareCookieKey, ctx, opts...)
+//	middleware := fetch.CookiesRemove()
+func CookiesRemove() Middleware {
+	return func(h Handler) Handler {
+		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+			req.Header.Del("Cookie")
+			return h.Handle(client, req)
+		})
+	}
 }
