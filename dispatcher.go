@@ -4,7 +4,6 @@ package fetch
 import (
 	"net/http"
 	"slices"
-	"time"
 )
 
 // Dispatcher manages HTTP client operations with middleware support.
@@ -16,11 +15,10 @@ type Dispatcher struct {
 }
 
 // NewDispatcher creates a new Dispatcher with the given HTTP client and middleware.
-// If client is nil, a default client with 30s timeout is created.
+// If client is nil, a default client is created with no timeout.
 func NewDispatcher(client *http.Client, middlewares ...Middleware) *Dispatcher {
 	if client == nil {
 		client = &http.Client{
-			Timeout:   30 * time.Second,
 			Transport: http.DefaultTransport,
 		}
 	}
@@ -32,10 +30,9 @@ func NewDispatcher(client *http.Client, middlewares ...Middleware) *Dispatcher {
 }
 
 // NewDispatcherWithTransport creates a new Dispatcher with a custom RoundTripper transport.
-// A default http.Client with 30s timeout is created using the provided transport.
+// A default http.Client with no timeout is created using the provided transport.
 func NewDispatcherWithTransport(transport http.RoundTripper, middlewares ...Middleware) *Dispatcher {
 	client := &http.Client{
-		Timeout:   30 * time.Second,
 		Transport: transport,
 	}
 

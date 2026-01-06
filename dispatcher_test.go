@@ -51,8 +51,8 @@ func TestNewDispatcher(t *testing.T) {
 			}
 
 			if tt.expectDefaultClient {
-				if d.client.Timeout != 30*time.Second {
-					t.Errorf("expected default timeout 30s, got %v", d.client.Timeout)
+				if d.client.Timeout != 0 {
+					t.Errorf("expected default timeout to be 0 (no timeout), got %v", d.client.Timeout)
 				}
 			}
 
@@ -80,8 +80,8 @@ func TestNewDispatcherWithTransport(t *testing.T) {
 		t.Error("expected custom transport to be used")
 	}
 
-	if d.client.Timeout != 30*time.Second {
-		t.Errorf("expected default timeout 30s, got %v", d.client.Timeout)
+	if d.client.Timeout != 0 {
+		t.Errorf("expected default timeout to be 0 (no timeout), got %v", d.client.Timeout)
 	}
 }
 
