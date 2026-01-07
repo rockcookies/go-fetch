@@ -2,24 +2,8 @@ package fetch
 
 import "net/http"
 
-// AddCookie returns a middleware that adds one or more HTTP cookies to the outgoing request.
-// The cookies are added using the AddCookie method, which properly formats them in the
-// Cookie header according to RFC 6265.
-//
-// Multiple calls to AddCookie with the same cookie name will result in multiple cookies
-// being sent. If you need to replace existing cookies, consider using CookiesRemove first.
-//
-// Example:
-//
-//	sessionCookie := &http.Cookie{
-//	    Name:  "session_id",
-//	    Value: "abc123",
-//	}
-//	authCookie := &http.Cookie{
-//	    Name:  "auth_token",
-//	    Value: "xyz789",
-//	}
-//	middleware := fetch.AddCookie(sessionCookie, authCookie)
+// AddCookie adds one or more HTTP cookies to the request.
+// Multiple cookies with the same name will all be sent.
 func AddCookie(cookies ...*http.Cookie) Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -31,17 +15,7 @@ func AddCookie(cookies ...*http.Cookie) Middleware {
 	}
 }
 
-// DelAllCookies returns a middleware that removes all cookies from the outgoing request
-// by deleting the Cookie header. This is useful when you need to ensure no cookies are
-// sent with a request, regardless of what was set previously.
-//
-// Note: This removes the entire Cookie header, so all cookies will be removed, not just
-// specific ones. If you need selective cookie removal, consider manipulating the Cookie
-// header directly using HeaderFuncs.
-//
-// Example:
-//
-//	middleware := fetch.DelAllCookies()
+// DelAllCookies removes all cookies from the request by deleting the Cookie header.
 func DelAllCookies() Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {

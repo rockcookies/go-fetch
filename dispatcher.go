@@ -10,8 +10,9 @@ import (
 // It wraps an http.Client and applies middleware chains to requests.
 // All methods are safe for concurrent use.
 type Dispatcher struct {
-	client      *http.Client
-	middlewares []Middleware
+	client          *http.Client
+	middlewares     []Middleware
+	coreMiddlewares []Middleware
 }
 
 // NewDispatcher creates a new Dispatcher with the given HTTP client and middleware.
@@ -68,25 +69,45 @@ func (d *Dispatcher) SetMiddlewares(middlewares ...Middleware) {
 	d.middlewares = middlewares
 }
 
-// With appends middleware to the dispatcher's middleware chain.
-// This operation is safe for concurrent use.
-func (d *Dispatcher) With(middlewares ...Middleware) *Dispatcher {
-	d2 := d.Clone()
-	d2.middlewares = append(d2.middlewares, middlewares...)
-	return d2
+// Use appends middleware to the dispatcher's middleware chain.
+// Note: This modifies the dispatcher in place. If you need an immutable copy,
+// use Clone() first.
+func (d *Dispatcher) Use(middlewares ...Middleware) {
+	d.middlewares = append(d.middlewares, middlewares...)
+}
+
+// CoreMiddlewares returns the dispatcher's core middlewares.
+func (d *Dispatcher) CoreMiddlewares() []Middleware {
+	return d.coreMiddlewares
+}
+
+// SetCoreMiddlewares replaces the dispatcher's core middlewares.
+func (d *Dispatcher) SetCoreMiddlewares(middlewares ...Middleware) {
+	d.coreMiddlewares = middlewares
+}
+
+// UseCore appends middleware to the dispatcher's core middleware chain.
+// Core middlewares are applied last (innermost layer) in the middleware chain.
+// Note: This modifies the dispatcher in place.
+func (d *Dispatcher) UseCore(middlewares ...Middleware) {
+	d.coreMiddlewares = append(d.coreMiddlewares, middlewares...)
 }
 
 // Clone creates a shallow copy of the Dispatcher.
 // The HTTP client is cloned, and middlewares are copied.
 func (d *Dispatcher) Clone() *Dispatcher {
 	return &Dispatcher{
-		client:      cloneClient(d.client),
-		middlewares: slices.Clone(d.middlewares),
+		client:          cloneClient(d.client),
+		middlewares:     slices.Clone(d.middlewares),
+		coreMiddlewares: slices.Clone(d.coreMiddlewares),
 	}
 }
 
-// Do executes the HTTP request with the dispatcher's middleware chain
-// plus any additional middlewares provided.
+// Dispatch executes the HTTP request with the dispatcher's middleware chain.
+// Middleware execution order (outermost to innermost):
+//  1. d.middlewares (dispatcher's middleware)
+//  2. middlewares (per-request middleware)
+//  3. d.coreMiddlewares (core middleware, applied last)
 func (d *Dispatcher) Dispatch(req *http.Request, middlewares ...Middleware) (*http.Response, error) {
 	client := cloneClient(d.client)
 
@@ -94,12 +115,24 @@ func (d *Dispatcher) Dispatch(req *http.Request, middlewares ...Middleware) (*ht
 		return client.Do(req)
 	})
 
-	middlewares = slices.Concat(d.middlewares, middlewares)
-	handler = compose(middlewares...)(handler)
+	handler = compose(
+		compose(d.middlewares...),
+		compose(middlewares...),
+		compose(d.coreMiddlewares...),
+	)(handler)
+
 	return handler.Handle(client, req)
 }
 
 // NewRequest creates a new Request bound to this dispatcher.
-func (d *Dispatcher) NewRequest() *Request {
-	return &Request{dispatcher: d}
+func (d *Dispatcher) NewRequest(middlewares ...Middleware) *Request {
+	return &Request{
+		dispatcher:  d,
+		middlewares: middlewares,
+	}
+}
+
+// R is an alias for NewRequest, creating a new Request bound to this dispatcher.
+func (d *Dispatcher) R(middlewares ...Middleware) *Request {
+	return d.NewRequest(middlewares...)
 }

@@ -1,15 +1,15 @@
 # go-fetch
 
-A composable HTTP client for Go built on `net/http` with middleware support.
+Composable HTTP client built on pure `net/http` with middleware support.
 
-## Why go-fetch?
+## Philosophy
 
-**Simplicity is the ultimate sophistication.** No frameworks, no magic, no unnecessary abstractions.
+**Less is more.** Zero non-standard dependencies, no magic, explicit errors.
 
-- Pure `net/http` - zero non-standard dependencies
-- Middleware composition for clean request/response handling
-- Explicit error handling - never ignore errors
-- Table-driven tests with high coverage
+- Pure `net/http` - standard library only
+- Middleware composition - clean separation of concerns
+- Explicit error handling - never ignore, always wrap
+- TDD with table-driven tests
 
 ## Installation
 
@@ -20,26 +20,20 @@ go get github.com/rockcookies/go-fetch
 ## Quick Start
 
 ```go
-package main
+dispatcher := fetch.NewDispatcher(nil)
 
-import (
-    "fmt"
-    "github.com/rockcookies/go-fetch"
-)
+resp := dispatcher.R().
+    JSON(map[string]string{"name": "John"}).
+    Send("POST", "https://api.example.com/users")
+defer resp.Close()
 
-func main() {
-    dispatcher := fetch.NewDispatcher(nil)
+if resp.Error != nil {
+    return fmt.Errorf("request failed: %w", resp.Error)
+}
 
-    resp := dispatcher.NewRequest().Send("GET", "https://api.example.com/users")
-    defer resp.Close()
-
-    if resp.Error != nil {
-        fmt.Printf("Error: %v\n", resp.Error)
-        return
-    }
-
-    fmt.Printf("Status: %d\n", resp.RawResponse.StatusCode)
-    fmt.Printf("Body: %s\n", resp.String())
+var user User
+if err := resp.JSON(&user); err != nil {
+    return fmt.Errorf("decode failed: %w", err)
 }
 ```
 
@@ -47,10 +41,11 @@ func main() {
 
 ### Dispatcher
 
-Wraps `http.Client` and manages middleware chains. Thread-safe.
+Wraps `http.Client` with middleware chains:
 
 ```go
-dispatcher := fetch.NewDispatcher(nil) // 30s default timeout
+// Default client
+dispatcher := fetch.NewDispatcher(nil)
 
 // Custom client
 client := &http.Client{Timeout: 10 * time.Second}
@@ -62,183 +57,118 @@ dispatcher.Use(authMiddleware)
 
 ### Request
 
-Accumulates middleware before execution:
+Chain-able request builder:
 
 ```go
-req := dispatcher.NewRequest()
-req.Use(customMiddleware)
-resp := req.JSON(map[string]string{"name": "John"}).Send("POST", url)
+resp := dispatcher.R().
+    HeaderKV("Authorization", "Bearer token").
+    AddCookie(&http.Cookie{Name: "session", Value: "abc"}).
+    JSON(payload).
+    Send("POST", url)
 defer resp.Close()
 ```
 
 ### Middleware
 
-Wraps handlers for cross-cutting concerns:
+Standard `net/http` handler pattern:
 
 ```go
-authMiddleware := func(next fetch.Handler) fetch.Handler {
+func authMiddleware(next fetch.Handler) fetch.Handler {
     return fetch.HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-        req.Header.Set("Authorization", "Bearer token")
+        req.Header.Set("Authorization", "Bearer "+getToken())
         return next.Handle(client, req)
     })
 }
 ```
 
-## Features
+## API Reference
 
 ### Request Body
 
-**JSON:**
 ```go
-resp := req.JSON(map[string]string{"name": "John"}).Send("POST", url)
-defer resp.Close()
-```
+// JSON/XML
+req.JSON(data)              // encoding/json
+req.XML(data)               // encoding/xml
 
-**XML:**
-```go
-resp := req.XML(User{Name: "John"}).Send("POST", url)
-defer resp.Close()
-```
+// Form
+req.Form(url.Values{})      // application/x-www-form-urlencoded
 
-**Form:**
-```go
-form := url.Values{}
-form.Set("username", "john")
-resp := req.Form(form).Send("POST", url)
-defer resp.Close()
-```
+// Raw
+req.Body(reader)            // io.Reader
+req.BodyGet(func() (io.Reader, error) {...})     // lazy evaluation
+req.BodyGetBytes(func() ([]byte, error) {...})   // lazy bytes
 
-**Raw Body:**
-```go
-resp := req.Body(strings.NewReader("data")).Send("POST", url)
-defer resp.Close()
-```
-
-**Lazy Body:**
-```go
-resp := req.BodyGet(func() (io.Reader, error) {
-    return loadDataFromFile() // Computed only when needed
-}).Send("POST", url)
-defer resp.Close()
-```
-
-### Multipart Forms
-
-```go
-fields := []*fetch.MultipartField{
-    {Name: "file", FileName: "doc.txt", Content: fileReader},
-    {Name: "description", Value: "My file"},
-}
-resp := req.Multipart(fields).Send("POST", url)
-defer resp.Close()
-```
-
-### Response Handling
-
-```go
-resp := req.Send("GET", url)
-defer resp.Close()  // Always defer - safe with errors
-
-if resp.Error != nil {
-    return fmt.Errorf("request failed: %w", resp.Error) // Explicit wrapping
-}
-
-// Access response
-fmt.Println(resp.RawResponse.StatusCode)
-body := resp.String()
-
-// Decode JSON
-var result MyStruct
-if err := resp.JSON(&result); err != nil {
-    return fmt.Errorf("decode failed: %w", err)
-}
+// Multipart
+req.Multipart([]*fetch.MultipartField{...})
 ```
 
 ### Headers & Cookies
 
 ```go
 // Headers
-dispatcher.Use(fetch.HeaderFuncs(func(h http.Header) {
-    h.Set("User-Agent", "MyApp/1.0")
-}))
+req.HeaderKV("Content-Type", "application/json")   // set single
+req.AddHeaderKV("Accept", "text/html")             // append single
+req.HeaderFromMap(map[string]string{...})          // set batch
+req.Header(func(h http.Header) {...})              // custom logic
 
 // Cookies
-dispatcher.Use(fetch.CookiesAdd(&http.Cookie{
-    Name:  "session",
-    Value: "token123",
-}))
+req.AddCookie(&http.Cookie{...})    // append
+req.DelAllCookies()                 // clear
 ```
 
-### Client Configuration
+### Response
+
+```go
+resp := req.Send("GET", url)
+defer resp.Close()  // ALWAYS defer
+
+if resp.Error != nil {
+    return fmt.Errorf("failed: %w", resp.Error)  // NEVER ignore
+}
+
+// Access
+statusCode := resp.RawResponse.StatusCode
+body := resp.String()
+bytes := resp.Bytes()
+
+// Decode
+var result T
+if err := resp.JSON(&result); err != nil {
+    return fmt.Errorf("decode: %w", err)
+}
+```
+
+### Client Tuning
 
 ```go
 dispatcher.Use(fetch.ClientFuncs(func(c *http.Client) {
-    c.Timeout = 10 * time.Second
+    c.Timeout = 5 * time.Second
     c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-        return http.ErrUseLastResponse // Disable redirects
+        return http.ErrUseLastResponse  // disable redirects
     }
 }))
 ```
 
-## Advanced Usage
-
-### Request Cloning
-
-```go
-baseReq := dispatcher.NewRequest()
-baseReq.UseFuncs(func(r *http.Request) {
-    r.Header.Set("Authorization", "Bearer token")
-})
-
-req1 := baseReq.Clone().Send("GET", "/users")
-req2 := baseReq.Clone().Send("GET", "/posts")
-```
-
-### Request Dumping
-
-```go
-import "github.com/rockcookies/go-fetch/dump"
-
-dispatcher.Use(dump.Middleware()) // Debug all requests/responses
-
-// With filters
-dispatcher.Use(dump.Middleware(dump.WithFilter(dump.SkipResponseBody())))
-```
-
-## Development Philosophy
-
-Follows strict principles:
-
-1. **Simplicity First (YAGNI)** - Only essential features, no over-engineering
-2. **Standard Library First** - Built on `net/http`, avoid external dependencies
-3. **Explicit Over Implicit** - Never ignore errors, always wrap with context
-4. **Single Responsibility** - Each component does one thing well
-5. **Test-First Imperative** - TDD with table-driven tests (Red-Green-Refactor)
-
-Read [docs/constitution.md](docs/constitution.md) for complete development constitution.
-
 ## Testing
 
 ```bash
-go test ./...           # Run all tests
-go test -v -race ./...  # With race detector
-go test -cover ./...    # Coverage report
+go test ./...           # all tests
+go test -v -race ./...  # with race detector
+go test -cover ./...    # coverage
 ```
 
-All code follows TDD: write failing test → make it pass → refactor.
-
-## License
-
-See [LICENSE](LICENSE).
+TDD cycle: Red (write failing test) → Green (make it pass) → Refactor.
 
 ## Contributing
 
-Pull requests must:
+All contributions must follow [docs/constitution.md](docs/constitution.md):
 
-- Start with a failing test (TDD)
-- Keep it simple (no abstractions without clear need)
-- Use standard library when possible
-- Handle all errors explicitly (never `_` errors)
-- Add table-driven tests for edge cases
+1. **YAGNI** - implement only what's needed
+2. **Standard Library First** - `net/http` over frameworks
+3. **Explicit Errors** - never `_`, always wrap with `%w`
+4. **TDD** - failing test first, table-driven style
+5. **Single Responsibility** - one thing, done well
 
-Constitutional review: all changes must comply with [docs/constitution.md](docs/constitution.md).
+## License
+
+MIT - see [LICENSE](LICENSE).

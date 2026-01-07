@@ -93,6 +93,8 @@ func SetPathParams(params map[string]string) Middleware {
 	}
 }
 
+// normalizePath removes trailing slashes to ensure consistent path handling.
+// This prevents double slashes when concatenating path segments.
 func normalizePath(path string) string {
 	if path == "/" {
 		return ""
@@ -100,6 +102,8 @@ func normalizePath(path string) string {
 	return path
 }
 
+// normalize ensures the URI has a scheme prefix.
+// Defaults to http:// if no scheme is present, simplifying user input.
 func normalize(uri string) string {
 	match, _ := regexp.MatchString("^http[s]?://", uri)
 	if match {

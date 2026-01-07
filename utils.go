@@ -16,8 +16,8 @@ func cloneClient(client *http.Client) *http.Client {
 }
 
 // applyOptions applies a series of option functions to an options struct.
-// This is a generic helper for the functional options pattern.
-// Returns the modified options struct.
+// This implements the functional options pattern, which allows for flexible
+// and extensible configuration without breaking API compatibility.
 func applyOptions[T any](options *T, opts ...func(*T)) *T {
 	for _, opt := range opts {
 		opt(options)

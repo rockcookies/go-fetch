@@ -2,14 +2,13 @@ package fetch
 
 import "net/http"
 
-// Handler defines the interface for handling HTTP requests.
-// It receives both the HTTP client and request, allowing full control
-// over the request execution.
+// Handler executes HTTP requests. Receives both client and request to enable
+// middleware to modify or replace the client if needed.
 type Handler interface {
 	Handle(client *http.Client, req *http.Request) (*http.Response, error)
 }
 
-// HandlerFunc is an adapter to allow ordinary functions to be used as Handlers.
+// HandlerFunc adapts functions to Handler interface.
 type HandlerFunc func(client *http.Client, req *http.Request) (*http.Response, error)
 
 // Handle calls the underlying function.
@@ -17,9 +16,8 @@ func (h HandlerFunc) Handle(client *http.Client, req *http.Request) (*http.Respo
 	return h(client, req)
 }
 
-// Middleware wraps a Handler to add cross-cutting concerns.
-// It follows the standard middleware pattern where each middleware
-// can decide to call the next handler or short-circuit the chain.
+// Middleware wraps Handler to add cross-cutting concerns.
+// Can short-circuit the chain or delegate to next handler.
 type Middleware func(Handler) Handler
 
 // skip is a no-op middleware that simply passes through to the next handler.

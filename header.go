@@ -4,28 +4,8 @@ import (
 	"net/http"
 )
 
-// SetHeader returns a middleware that applies a series of functions to modify the request headers
-// before making the actual HTTP request. This provides flexible control over header manipulation
-// through direct access to the http.Header map.
-//
-// The functions are executed in the order provided. Each function receives the http.Header from
-// the request, allowing it to add, modify, or delete headers as needed.
-//
-// This is particularly useful for dynamic header manipulation or when you need to perform
-// complex header logic that goes beyond simple key-value pairs.
-//
-// Example:
-//
-//	middleware := fetch.SetHeader(
-//	    func(h http.Header) {
-//	        h.Set("User-Agent", "MyApp/1.0")
-//	        h.Set("Accept", "application/json")
-//	    },
-//	    func(h http.Header) {
-//	        h.Add("X-Custom-Header", "value1")
-//	        h.Add("X-Custom-Header", "value2")  // Multiple values
-//	    },
-//	)
+// SetHeader applies functions to modify request headers.
+// Functions execute in order. Use this for complex header logic beyond simple key-value pairs.
 func SetHeader(funcs ...func(h http.Header)) Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -37,18 +17,21 @@ func SetHeader(funcs ...func(h http.Header)) Middleware {
 	}
 }
 
+// AddHeaderKV adds a header value. Preserves existing values for the same key.
 func AddHeaderKV(key, value string) Middleware {
 	return SetHeader(func(h http.Header) {
 		h.Add(key, value)
 	})
 }
 
+// SetHeaderKV sets a header value. Replaces existing values for the same key.
 func SetHeaderKV(key, value string) Middleware {
 	return SetHeader(func(h http.Header) {
 		h.Set(key, value)
 	})
 }
 
+// AddHeaderFromMap adds multiple headers from a map. Preserves existing values.
 func AddHeaderFromMap(headers map[string]string) Middleware {
 	return SetHeader(func(h http.Header) {
 		for k, v := range headers {
@@ -57,6 +40,7 @@ func AddHeaderFromMap(headers map[string]string) Middleware {
 	})
 }
 
+// SetHeaderFromMap sets multiple headers from a map. Replaces existing values.
 func SetHeaderFromMap(headers map[string]string) Middleware {
 	return SetHeader(func(h http.Header) {
 		for k, v := range headers {
@@ -65,6 +49,7 @@ func SetHeaderFromMap(headers map[string]string) Middleware {
 	})
 }
 
+// DelHeader removes headers by key.
 func DelHeader(keys ...string) Middleware {
 	return SetHeader(func(h http.Header) {
 		for _, k := range keys {
@@ -73,12 +58,14 @@ func DelHeader(keys ...string) Middleware {
 	})
 }
 
+// SetContentType sets the Content-Type header.
 func SetContentType(contentType string) Middleware {
 	return SetHeader(func(h http.Header) {
 		h.Set("Content-Type", contentType)
 	})
 }
 
+// SetUserAgent sets the User-Agent header.
 func SetUserAgent(userAgent string) Middleware {
 	return SetHeader(func(h http.Header) {
 		h.Set("User-Agent", userAgent)

@@ -138,22 +138,18 @@ func TestDispatcher_SetMiddlewares(t *testing.T) {
 	}
 }
 
-func TestDispatcher_With(t *testing.T) {
-	original := NewDispatcher(nil, Skip())
+func TestDispatcher_Use(t *testing.T) {
+	d := NewDispatcher(nil, Skip())
 
-	// Test that With creates a new dispatcher
-	newDispatcher := original.With(Skip())
-
-	if newDispatcher == original {
-		t.Error("expected With to create a new dispatcher")
+	if len(d.middlewares) != 1 {
+		t.Errorf("expected 1 middleware initially, got %d", len(d.middlewares))
 	}
 
-	if len(newDispatcher.middlewares) != 2 {
-		t.Errorf("expected 2 middlewares, got %d", len(newDispatcher.middlewares))
-	}
+	// Test that Use appends middleware
+	d.Use(Skip(), Skip())
 
-	if len(original.middlewares) != 1 {
-		t.Error("expected original dispatcher to be unchanged")
+	if len(d.middlewares) != 3 {
+		t.Errorf("expected 3 middlewares after Use, got %d", len(d.middlewares))
 	}
 }
 
@@ -271,5 +267,186 @@ func TestDispatcher_NewRequest(t *testing.T) {
 
 	if req.dispatcher != d {
 		t.Error("expected request to reference dispatcher")
+	}
+}
+
+func TestDispatcher_R(t *testing.T) {
+	d := NewDispatcher(nil)
+
+	req := d.R()
+
+	if req == nil {
+		t.Fatal("expected request to be created")
+	}
+
+	if req.dispatcher != d {
+		t.Error("expected request to reference dispatcher")
+	}
+}
+
+// TestDispatcher_MiddlewareExecutionOrder verifies the execution order of middlewares:
+// d.middlewares -> middlewares (per-request) -> d.coreMiddlewares
+func TestDispatcher_MiddlewareExecutionOrder(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Track execution order using a shared slice
+	var executionOrder []string
+
+	// Create middleware that records when it executes
+	createTrackingMiddleware := func(name string) Middleware {
+		return func(next Handler) Handler {
+			return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+				executionOrder = append(executionOrder, name)
+				return next.Handle(client, req)
+			})
+		}
+	}
+
+	// Set up dispatcher with all three middleware types
+	d := NewDispatcher(nil)
+	d.Use(createTrackingMiddleware("dispatcher-1"))
+	d.Use(createTrackingMiddleware("dispatcher-2"))
+	d.UseCore(createTrackingMiddleware("core-1"))
+	d.UseCore(createTrackingMiddleware("core-2"))
+
+	req, err := http.NewRequest("GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+
+	// Execute with per-request middlewares
+	_, err = d.Dispatch(req,
+		createTrackingMiddleware("request-1"),
+		createTrackingMiddleware("request-2"),
+	)
+	if err != nil {
+		t.Fatalf("Dispatch returned error: %v", err)
+	}
+
+	// Verify execution order: dispatcher middlewares -> request middlewares -> core middlewares
+	expected := []string{
+		"dispatcher-1",
+		"dispatcher-2",
+		"request-1",
+		"request-2",
+		"core-1",
+		"core-2",
+	}
+
+	if len(executionOrder) != len(expected) {
+		t.Fatalf("expected %d middleware executions, got %d", len(expected), len(executionOrder))
+	}
+
+	for i, exp := range expected {
+		if executionOrder[i] != exp {
+			t.Errorf("execution order at position %d: expected %s, got %s", i, exp, executionOrder[i])
+		}
+	}
+}
+
+// TestDispatcher_CoreMiddlewaresGetters tests CoreMiddlewares getter and setter
+func TestDispatcher_CoreMiddlewares(t *testing.T) {
+	d := NewDispatcher(nil)
+
+	if len(d.CoreMiddlewares()) != 0 {
+		t.Errorf("expected 0 core middlewares initially, got %d", len(d.CoreMiddlewares()))
+	}
+
+	coreMiddlewares := []Middleware{Skip(), Skip()}
+	d.SetCoreMiddlewares(coreMiddlewares...)
+
+	if len(d.CoreMiddlewares()) != len(coreMiddlewares) {
+		t.Errorf("expected %d core middlewares, got %d", len(coreMiddlewares), len(d.CoreMiddlewares()))
+	}
+}
+
+// TestDispatcher_UseCore tests UseCore method
+func TestDispatcher_UseCore(t *testing.T) {
+	d := NewDispatcher(nil)
+
+	if len(d.coreMiddlewares) != 0 {
+		t.Errorf("expected 0 core middlewares initially, got %d", len(d.coreMiddlewares))
+	}
+
+	d.UseCore(Skip())
+
+	if len(d.coreMiddlewares) != 1 {
+		t.Errorf("expected 1 core middleware after UseCore, got %d", len(d.coreMiddlewares))
+	}
+
+	d.UseCore(Skip(), Skip())
+
+	if len(d.coreMiddlewares) != 3 {
+		t.Errorf("expected 3 core middlewares after second UseCore, got %d", len(d.coreMiddlewares))
+	}
+}
+
+// TestDispatcher_Clone_WithCoreMiddlewares ensures Clone copies core middlewares
+func TestDispatcher_Clone_WithCoreMiddlewares(t *testing.T) {
+	original := NewDispatcher(&http.Client{Timeout: 10 * time.Second})
+	original.Use(Skip())
+	original.UseCore(Skip(), Skip())
+
+	cloned := original.Clone()
+
+	if cloned == original {
+		t.Error("expected Clone to create a new dispatcher")
+	}
+
+	if len(cloned.coreMiddlewares) != len(original.coreMiddlewares) {
+		t.Errorf("expected cloned core middlewares length to match original: expected %d, got %d",
+			len(original.coreMiddlewares), len(cloned.coreMiddlewares))
+	}
+
+	// Verify that modifying cloned middlewares doesn't affect original
+	cloned.UseCore(Skip())
+
+	if len(cloned.coreMiddlewares) == len(original.coreMiddlewares) {
+		t.Error("expected cloned middlewares to be independent from original")
+	}
+}
+
+// TestDispatcher_MiddlewareLayering tests that middlewares wrap correctly
+func TestDispatcher_MiddlewareLayering(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check that all headers are present (proving all middlewares executed)
+		headers := []string{"X-Dispatcher", "X-Request", "X-Core"}
+		for _, h := range headers {
+			if r.Header.Get(h) == "" {
+				t.Errorf("expected header %s to be set", h)
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	createHeaderMiddleware := func(headerName, headerValue string) Middleware {
+		return func(next Handler) Handler {
+			return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+				req.Header.Set(headerName, headerValue)
+				return next.Handle(client, req)
+			})
+		}
+	}
+
+	d := NewDispatcher(nil)
+	d.Use(createHeaderMiddleware("X-Dispatcher", "dispatcher"))
+	d.UseCore(createHeaderMiddleware("X-Core", "core"))
+
+	req, err := http.NewRequest("GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+
+	resp, err := d.Dispatch(req, createHeaderMiddleware("X-Request", "request"))
+	if err != nil {
+		t.Fatalf("Dispatch returned error: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
 	}
 }

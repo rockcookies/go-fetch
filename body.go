@@ -11,11 +11,8 @@ import (
 	"github.com/rockcookies/go-fetch/internal/bufferpool"
 )
 
-// SetBody returns a middleware that sets the request body from an io.Reader.
-// If the reader implements Len() int (like bytes.Buffer), Content-Length is automatically set.
-//
-// Note: The reader is consumed during the request and cannot be retried.
-// For retry support, use SetBodyGet or SetBodyGetBytes instead.
+// SetBody sets the request body from an io.Reader.
+// Note: The reader is consumed and cannot be retried. Use SetBodyGet for retry support.
 func SetBody(reader io.Reader) Middleware {
 	return func(handler Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -33,8 +30,8 @@ func SetBody(reader io.Reader) Middleware {
 	}
 }
 
-// SetBodyGet creates middleware that lazily provides the request body.
-// The getter function is called when the body is needed, supporting retries.
+// SetBodyGet lazily provides the request body via a getter function.
+// The getter is called on each request attempt, enabling retry support.
 func SetBodyGet(getReader func() (io.Reader, error)) Middleware {
 	return func(handler Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -83,15 +80,13 @@ func setBodyGetBytes(getBytes func() ([]byte, error), contentType string) Middle
 	}
 }
 
-// SetBodyGetBytes creates middleware that lazily provides the request body as bytes.
-// This is more efficient than SetBodyGetBytes when the body size is known.
+// SetBodyGetBytes lazily provides the request body as bytes, supporting retries.
 func SetBodyGetBytes(getBytes func() ([]byte, error)) Middleware {
 	return setBodyGetBytes(getBytes, "")
 }
 
-// SetBodyJSON creates middleware that marshals data to JSON and sets it as the request body.
-// Accepts string, []byte, or any marshallable type.
-// Automatically sets Content-Type to application/json.
+// SetBodyJSON marshals data to JSON as the request body.
+// Sets Content-Type to application/json.
 func SetBodyJSON(data any) Middleware {
 	return setBodyGetBytes(func() ([]byte, error) {
 		switch v := data.(type) {
@@ -112,9 +107,8 @@ func SetBodyJSON(data any) Middleware {
 	}, "application/json")
 }
 
-// SetBodyXML creates middleware that marshals data to XML and sets it as the request body.
-// Accepts string, []byte, or any marshallable type.
-// Automatically sets Content-Type to application/xml.
+// SetBodyXML marshals data to XML as the request body.
+// Sets Content-Type to application/xml.
 func SetBodyXML(data any) Middleware {
 	return setBodyGetBytes(func() ([]byte, error) {
 		switch v := data.(type) {
@@ -135,8 +129,8 @@ func SetBodyXML(data any) Middleware {
 	}, "application/xml")
 }
 
-// SetBodyForm creates middleware that encodes form data and sets it as the request body.
-// Automatically sets Content-Type to application/x-www-form-urlencoded.
+// SetBodyForm encodes form data as the request body.
+// Sets Content-Type to application/x-www-form-urlencoded.
 func SetBodyForm(data url.Values) Middleware {
 	return setBodyGetBytes(func() ([]byte, error) {
 		buf := bufferpool.Get()

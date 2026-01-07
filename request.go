@@ -61,42 +61,62 @@ func (r *Request) XML(data any) *Request {
 	return r.Use(SetBodyXML(data))
 }
 
+// AddCookie appends one or more cookies to the request.
+// Use this when you need to send authentication tokens or session data.
 func (r *Request) AddCookie(cookie ...*http.Cookie) *Request {
 	return r.Use(AddCookie(cookie...))
 }
 
+// DelAllCookies removes all cookies from the request.
+// Use this when you need to ensure no cookies are sent with the request.
 func (r *Request) DelAllCookies() *Request {
 	return r.Use(DelAllCookies())
 }
 
+// Header applies one or more functions to modify the request headers.
+// Use this for complex header manipulation that requires custom logic.
 func (r *Request) Header(funcs ...func(http.Header)) *Request {
 	return r.Use(SetHeader(funcs...))
 }
 
+// AddHeaderKV appends a header value to the request without replacing existing values.
+// Use this when a header can have multiple values (e.g., Accept, Cookie).
 func (r *Request) AddHeaderKV(key, value string) *Request {
 	return r.Use(AddHeaderKV(key, value))
 }
 
+// HeaderKV sets a single header value, replacing any existing values.
+// Use this when you want to ensure only one value for a header (e.g., Content-Type).
 func (r *Request) HeaderKV(key, value string) *Request {
 	return r.Use(SetHeaderKV(key, value))
 }
 
+// AddHeaderFromMap appends multiple headers from a map without replacing existing values.
+// Use this when you have a set of headers to add in batch.
 func (r *Request) AddHeaderFromMap(headers map[string]string) *Request {
 	return r.Use(AddHeaderFromMap(headers))
 }
 
+// HeaderFromMap sets multiple headers from a map, replacing existing values.
+// Use this when you want to reset headers to a known state.
 func (r *Request) HeaderFromMap(headers map[string]string) *Request {
 	return r.Use(SetHeaderFromMap(headers))
 }
 
+// DelHeader removes one or more headers from the request.
+// Use this when you need to prevent certain headers from being sent.
 func (r *Request) DelHeader(keys ...string) *Request {
 	return r.Use(DelHeader(keys...))
 }
 
+// ContentType sets the Content-Type header.
+// Most body methods (JSON, XML, Form) set this automatically.
 func (r *Request) ContentType(contentType string) *Request {
 	return r.Use(SetContentType(contentType))
 }
 
+// UserAgent sets the User-Agent header.
+// Use this to identify your application to the server.
 func (r *Request) UserAgent(userAgent string) *Request {
 	return r.Use(SetUserAgent(userAgent))
 }
@@ -106,42 +126,62 @@ func (r *Request) Multipart(fields []*MultipartField, opts ...func(*MultipartOpt
 	return r.Use(SetMultipart(fields, opts...))
 }
 
+// Query applies one or more functions to modify the request query parameters.
+// Use this for complex query manipulation that requires custom logic.
 func (r *Request) Query(funcs ...func(url.Values)) *Request {
 	return r.Use(SetQuery(funcs...))
 }
 
+// AddQueryKV appends a query parameter without replacing existing values.
+// Use this when a parameter can have multiple values (e.g., ?tag=a&tag=b).
 func (r *Request) AddQueryKV(key, value string) *Request {
 	return r.Use(AddQueryKV(key, value))
 }
 
+// SetQueryKV sets a single query parameter, replacing any existing values.
+// Use this when you want to ensure only one value for a parameter.
 func (r *Request) SetQueryKV(key, value string) *Request {
 	return r.Use(SetQueryKV(key, value))
 }
 
+// AddQueryFromMap appends multiple query parameters from a map without replacing existing values.
+// Use this when you have a set of parameters to add in batch.
 func (r *Request) AddQueryFromMap(params map[string]string) *Request {
 	return r.Use(AddQueryFromMap(params))
 }
 
+// SetQueryFromMap sets multiple query parameters from a map, replacing existing values.
+// Use this when you want to reset query parameters to a known state.
 func (r *Request) SetQueryFromMap(params map[string]string) *Request {
 	return r.Use(SetQueryFromMap(params))
 }
 
+// DelQuery removes one or more query parameters from the request.
+// Use this when you need to prevent certain parameters from being sent.
 func (r *Request) DelQuery(keys ...string) *Request {
 	return r.Use(DelQuery(keys...))
 }
 
+// BaseURL sets the base URL (scheme and host) for the request.
+// Use this to target different environments or when the base URL is dynamic.
 func (r *Request) BaseURL(baseURL string) *Request {
 	return r.Use(SetBaseURL(baseURL))
 }
 
+// PathSuffix appends a path segment to the request URL's path.
+// Use this to add resource identifiers (e.g., /users → /users/123).
 func (r *Request) PathSuffix(suffix string) *Request {
 	return r.Use(SetPathSuffix(suffix))
 }
 
+// PathPrefix prepends a path segment to the request URL's path.
+// Use this to add API base paths (e.g., /users → /api/v1/users).
 func (r *Request) PathPrefix(prefix string) *Request {
 	return r.Use(SetPathPrefix(prefix))
 }
 
+// PathParams replaces path parameter placeholders with actual values.
+// Use this for RESTful APIs with path parameters (e.g., /users/{id} → /users/123).
 func (r *Request) PathParams(params map[string]string) *Request {
 	return r.Use(SetPathParams(params))
 }
@@ -200,6 +240,8 @@ func (r *Request) Get(url string) *Response {
 	return r.Send("GET", url)
 }
 
+// GetContext performs a GET request with the given context.
+// Use the context to control timeouts and cancellation.
 func (r *Request) GetContext(ctx context.Context, url string) *Response {
 	return r.SendContext(ctx, "GET", url)
 }
@@ -211,6 +253,8 @@ func (r *Request) Head(url string) *Response {
 	return r.HeadContext(context.Background(), url)
 }
 
+// HeadContext performs a HEAD request with the given context.
+// Use the context to control timeouts and cancellation.
 func (r *Request) HeadContext(ctx context.Context, url string) *Response {
 	return r.SendContext(ctx, "HEAD", url)
 }
@@ -222,6 +266,8 @@ func (r *Request) Post(url string) *Response {
 	return r.PostContext(context.Background(), url)
 }
 
+// PostContext performs a POST request with the given context.
+// Use the context to control timeouts and cancellation.
 func (r *Request) PostContext(ctx context.Context, url string) *Response {
 	return r.SendContext(ctx, "POST", url)
 }
@@ -233,6 +279,8 @@ func (r *Request) Put(url string) *Response {
 	return r.PutContext(context.Background(), url)
 }
 
+// PutContext performs a PUT request with the given context.
+// Use the context to control timeouts and cancellation.
 func (r *Request) PutContext(ctx context.Context, url string) *Response {
 	return r.SendContext(ctx, "PUT", url)
 }
@@ -244,6 +292,8 @@ func (r *Request) Patch(url string) *Response {
 	return r.PatchContext(context.Background(), url)
 }
 
+// PatchContext performs a PATCH request with the given context.
+// Use the context to control timeouts and cancellation.
 func (r *Request) PatchContext(ctx context.Context, url string) *Response {
 	return r.SendContext(ctx, "PATCH", url)
 }
@@ -255,6 +305,8 @@ func (r *Request) Delete(url string) *Response {
 	return r.DeleteContext(context.Background(), url)
 }
 
+// DeleteContext performs a DELETE request with the given context.
+// Use the context to control timeouts and cancellation.
 func (r *Request) DeleteContext(ctx context.Context, url string) *Response {
 	return r.SendContext(ctx, "DELETE", url)
 }
@@ -266,6 +318,8 @@ func (r *Request) Options(url string) *Response {
 	return r.OptionsContext(context.Background(), url)
 }
 
+// OptionsContext performs an OPTIONS request with the given context.
+// Use the context to control timeouts and cancellation.
 func (r *Request) OptionsContext(ctx context.Context, url string) *Response {
 	return r.SendContext(ctx, "OPTIONS", url)
 }
@@ -277,6 +331,8 @@ func (r *Request) Trace(url string) *Response {
 	return r.TraceContext(context.Background(), url)
 }
 
+// TraceContext performs a TRACE request with the given context.
+// Use the context to control timeouts and cancellation.
 func (r *Request) TraceContext(ctx context.Context, url string) *Response {
 	return r.SendContext(ctx, "TRACE", url)
 }
