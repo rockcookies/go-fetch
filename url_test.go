@@ -42,6 +42,24 @@ func TestSetBaseURL(t *testing.T) {
 			requestURL:  "http://localhost/path?key=value",
 			expectedURL: "http://api.example.com/path?key=value",
 		},
+		{
+			name:        "base URL with path",
+			baseURL:     "http://api.example.com/v1",
+			requestURL:  "http://localhost/users",
+			expectedURL: "http://api.example.com/v1/users",
+		},
+		{
+			name:        "base URL with path and trailing slash",
+			baseURL:     "http://api.example.com/v1/",
+			requestURL:  "http://localhost/users",
+			expectedURL: "http://api.example.com/v1/users",
+		},
+		{
+			name:        "base URL with only root path",
+			baseURL:     "http://api.example.com/",
+			requestURL:  "http://localhost/users",
+			expectedURL: "http://api.example.com/users",
+		},
 	}
 
 	for _, tt := range tests {

@@ -30,7 +30,9 @@ func SetBaseURL(uri string) Middleware {
 			req.URL.Host = u.Host
 
 			if u.Path != "" && u.Path != "/" {
-				req.URL.Path = normalizePath(req.URL.Path)
+				// Remove trailing slash to prevent double slashes when concatenating
+				basePath := strings.TrimSuffix(u.Path, "/")
+				req.URL.Path = basePath + req.URL.Path
 			}
 
 			return h.Handle(client, req)
