@@ -67,5 +67,5 @@ func SetCookieOptions(opts ...func(*CookieOptions)) Middleware {
 }
 
 func WithCookieOptions(ctx context.Context, opts ...func(*CookieOptions)) context.Context {
-	return withOptions(&prepareCookieKey, ctx, opts...)
+	return withOptions(ctx, &prepareCookieKey, opts...)
 }

@@ -40,7 +40,7 @@ func getOptions[T any](key *utils.ContextKey[[]func(T)], req *http.Request, defa
 	return options, ok
 }
 
-func withOptions[T any](key *utils.ContextKey[[]T], ctx context.Context, opts ...T) context.Context {
+func withOptions[T any](ctx context.Context, key *utils.ContextKey[[]T], opts ...T) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -57,7 +57,7 @@ func withOptionsMiddleware[T any](key *utils.ContextKey[[]T], opts ...T) Middlew
 
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			req = req.WithContext(withOptions(key, req.Context(), opts...))
+			req = req.WithContext(withOptions(req.Context(), key, opts...))
 			return h.Handle(client, req)
 		})
 	}

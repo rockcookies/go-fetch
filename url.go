@@ -78,7 +78,7 @@ func SetURLOptions(funcs ...func(*URLOptions)) Middleware {
 // WithURLOptions adds URL options to the context.
 // Used when building requests programmatically.
 func WithURLOptions(ctx context.Context, options ...func(*URLOptions)) context.Context {
-	return withOptions(&prepareURLKey, ctx, options...)
+	return withOptions(ctx, &prepareURLKey, options...)
 }
 
 func normalizePath(path string) string {
@@ -88,9 +88,10 @@ func normalizePath(path string) string {
 	return path
 }
 
+var reHTTP = regexp.MustCompile(`^https?://`)
+
 func normalize(uri string) string {
-	match, _ := regexp.MatchString("^http[s]?://", uri)
-	if match {
+	if reHTTP.MatchString(uri) {
 		return uri
 	}
 	return "http://" + uri

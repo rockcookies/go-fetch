@@ -64,5 +64,5 @@ func SetHeaderOptions(opts ...func(*HeaderOptions)) Middleware {
 }
 
 func WithHeaderOptions(ctx context.Context, opts ...func(*HeaderOptions)) context.Context {
-	return withOptions(&prepareHeaderKey, ctx, opts...)
+	return withOptions(ctx, &prepareHeaderKey, opts...)
 }

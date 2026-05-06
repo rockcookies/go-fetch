@@ -86,5 +86,5 @@ func SetClientOptions(opts ...func(*http.Client)) Middleware {
 //	})
 //	resp := req.SendWithContext(ctx, "GET", "https://api.example.com")
 func WithClientOptions(ctx context.Context, opts ...func(*http.Client)) context.Context {
-	return withOptions(&prepareClientKey, ctx, opts...)
+	return withOptions(ctx, &prepareClientKey, opts...)
 }
