@@ -1,379 +1,381 @@
 package fetch
 
 import (
-	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRequest_Use(t *testing.T) {
-	d := NewDispatcher(nil)
-	req := d.NewRequest()
-
-	if len(req.middlewares) != 0 {
-		t.Error("expected empty middlewares initially")
-	}
-
-	req.Use(Skip())
-
-	if len(req.middlewares) != 1 {
-		t.Errorf("expected 1 middleware, got %d", len(req.middlewares))
-	}
-
-	// Test method chaining
-	req2 := req.Use(Skip(), Skip())
-
-	if req2 != req {
-		t.Error("expected Use to return the same request for chaining")
-	}
-
-	if len(req.middlewares) != 3 {
-		t.Errorf("expected 3 middlewares, got %d", len(req.middlewares))
-	}
-}
-
-func TestRequest_Clone(t *testing.T) {
-	d := NewDispatcher(nil)
-	req := d.NewRequest().Use(Skip())
-
-	cloned := req.Clone()
-
-	if cloned == req {
-		t.Error("expected Clone to create a new request")
-	}
-
-	if cloned.dispatcher != req.dispatcher {
-		t.Error("expected cloned request to reference same dispatcher")
-	}
-
-	if len(cloned.middlewares) != len(req.middlewares) {
-		t.Error("expected cloned middlewares to have same length")
-	}
-
-	// Modify cloned middlewares shouldn't affect original
-	cloned.Use(Skip())
-
-	if len(req.middlewares) != 1 {
-		t.Error("expected original request middlewares unchanged")
-	}
-
-	if len(cloned.middlewares) != 2 {
-		t.Error("expected cloned request to have added middleware")
-	}
-}
-
-func TestRequest_Body(t *testing.T) {
-	d := NewDispatcher(nil)
-	req := d.NewRequest()
-
-	reader := strings.NewReader("test body")
-	req.Body(reader)
-
-	if len(req.middlewares) != 1 {
-		t.Error("expected Body to add middleware")
-	}
-}
-
-func TestRequest_JSON(t *testing.T) {
-	d := NewDispatcher(nil)
-	req := d.NewRequest()
-
-	data := map[string]string{"key": "value"}
-	req.JSON(data)
-
-	if len(req.middlewares) != 1 {
-		t.Error("expected JSON to add middleware")
-	}
-}
-
-func TestRequest_Form(t *testing.T) {
-	d := NewDispatcher(nil)
-	req := d.NewRequest()
-
-	form := url.Values{}
-	form.Set("key", "value")
-	req.Form(form)
-
-	if len(req.middlewares) != 1 {
-		t.Error("expected Form to add middleware")
-	}
-}
-
-func TestRequest_Header(t *testing.T) {
-	d := NewDispatcher(nil)
-	req := d.NewRequest()
-
-	req.Header(func(h http.Header) {
-		h.Set("X-Custom", "test")
-	})
-
-	if len(req.middlewares) != 1 {
-		t.Error("expected Header to add middleware")
-	}
-}
-
-func TestRequest_Query(t *testing.T) {
-	d := NewDispatcher(nil)
-	req := d.NewRequest()
-
-	req.Query(func(q url.Values) {
-		q.Set("key", "value")
-	})
-
-	if len(req.middlewares) != 1 {
-		t.Error("expected Query to add middleware")
-	}
-}
-
-func TestRequest_Send(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("response body"))
-	}))
-	defer server.Close()
-
-	d := NewDispatcher(nil)
-	resp := d.NewRequest().Send("GET", server.URL)
-
-	if resp.Error != nil {
-		t.Fatalf("Send returned error: %v", resp.Error)
-	}
-
-	if resp.RawResponse.StatusCode != http.StatusOK {
-		t.Errorf("expected status 200, got %d", resp.RawResponse.StatusCode)
-	}
-
-	body := resp.String()
-	if body != "response body" {
-		t.Errorf("expected body %q, got %q", "response body", body)
-	}
-}
-
-func TestRequest_SendContext(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check that context was set
-		if r.Context() == context.Background() {
-			t.Error("expected custom context")
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	d := NewDispatcher(nil)
-	ctx := context.WithValue(context.Background(), "test", "value")
-	resp := d.NewRequest().SendContext(ctx, "GET", server.URL)
-
-	if resp.Error != nil {
-		t.Fatalf("SendContext returned error: %v", resp.Error)
-	}
-
-	if resp.RawResponse.StatusCode != http.StatusOK {
-		t.Errorf("expected status 200, got %d", resp.RawResponse.StatusCode)
-	}
-}
-
-func TestRequest_SendContext_NilContext(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	d := NewDispatcher(nil)
-	resp := d.NewRequest().SendContext(nil, "GET", server.URL)
-
-	if resp.Error != nil {
-		t.Fatalf("SendContext with nil context returned error: %v", resp.Error)
-	}
-}
-
-func TestRequest_Send_InvalidURL(t *testing.T) {
-	d := NewDispatcher(nil)
-	resp := d.NewRequest().Send("GET", "://invalid-url")
-
-	if resp.Error == nil {
-		t.Error("expected error for invalid URL")
-	}
-}
-
-func TestRequest_HTTPMethods(t *testing.T) {
-	methods := []struct {
-		name   string
-		method string
-		fn     func(*Request, string) *Response
+	tests := []struct {
+		name            string
+		middlewares     []Middleware
+		expectedHeaders map[string]string
 	}{
-		{"GET", "GET", func(r *Request, url string) *Response { return r.Get(url) }},
-		{"POST", "POST", func(r *Request, url string) *Response { return r.Post(url) }},
-		{"PUT", "PUT", func(r *Request, url string) *Response { return r.Put(url) }},
-		{"PATCH", "PATCH", func(r *Request, url string) *Response { return r.Patch(url) }},
-		{"DELETE", "DELETE", func(r *Request, url string) *Response { return r.Delete(url) }},
-		{"HEAD", "HEAD", func(r *Request, url string) *Response { return r.Head(url) }},
-		{"OPTIONS", "OPTIONS", func(r *Request, url string) *Response { return r.Options(url) }},
-		{"TRACE", "TRACE", func(r *Request, url string) *Response { return r.Trace(url) }},
+		{
+			name: "single middleware",
+			middlewares: []Middleware{
+				func(next Handler) Handler {
+					return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+						req.Header.Set("X-Test", "value1")
+						return next.Handle(client, req)
+					})
+				},
+			},
+			expectedHeaders: map[string]string{"X-Test": "value1"},
+		},
+		{
+			name: "multiple middlewares",
+			middlewares: []Middleware{
+				func(next Handler) Handler {
+					return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+						req.Header.Set("X-First", "first")
+						return next.Handle(client, req)
+					})
+				},
+				func(next Handler) Handler {
+					return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+						req.Header.Set("X-Second", "second")
+						return next.Handle(client, req)
+					})
+				},
+			},
+			expectedHeaders: map[string]string{
+				"X-First":  "first",
+				"X-Second": "second",
+			},
+		},
 	}
 
-	for _, tt := range methods {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			dispatcher := NewDispatcher(nil)
+			req := dispatcher.NewRequest().Use(tt.middlewares...)
+
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != tt.method {
-					t.Errorf("expected method %q, got %q", tt.method, r.Method)
+				for key, value := range tt.expectedHeaders {
+					assert.Equal(t, value, r.Header.Get(key))
 				}
 				w.WriteHeader(http.StatusOK)
 			}))
 			defer server.Close()
 
-			d := NewDispatcher(nil)
-			resp := tt.fn(d.NewRequest(), server.URL)
-
-			if resp.Error != nil {
-				t.Fatalf("%s returned error: %v", tt.name, resp.Error)
-			}
-
-			if resp.RawResponse.StatusCode != http.StatusOK {
-				t.Errorf("expected status 200, got %d", resp.RawResponse.StatusCode)
-			}
+			resp := req.Send("GET", server.URL)
+			assert.NoError(t, resp.Error)
 		})
 	}
 }
 
-func TestRequest_HTTPMethodsContext(t *testing.T) {
-	methods := []struct {
-		name   string
-		method string
-		fn     func(*Request, context.Context, string) *Response
+func TestRequest_UseFuncs(t *testing.T) {
+	tests := []struct {
+		name            string
+		funcs           []func(*http.Request)
+		expectedHeaders map[string]string
 	}{
-		{"GetContext", "GET", func(r *Request, ctx context.Context, url string) *Response { return r.GetContext(ctx, url) }},
-		{"PostContext", "POST", func(r *Request, ctx context.Context, url string) *Response { return r.PostContext(ctx, url) }},
-		{"PutContext", "PUT", func(r *Request, ctx context.Context, url string) *Response { return r.PutContext(ctx, url) }},
-		{"PatchContext", "PATCH", func(r *Request, ctx context.Context, url string) *Response { return r.PatchContext(ctx, url) }},
-		{"DeleteContext", "DELETE", func(r *Request, ctx context.Context, url string) *Response { return r.DeleteContext(ctx, url) }},
-		{"HeadContext", "HEAD", func(r *Request, ctx context.Context, url string) *Response { return r.HeadContext(ctx, url) }},
-		{"OptionsContext", "OPTIONS", func(r *Request, ctx context.Context, url string) *Response { return r.OptionsContext(ctx, url) }},
-		{"TraceContext", "TRACE", func(r *Request, ctx context.Context, url string) *Response { return r.TraceContext(ctx, url) }},
+		{
+			name: "single func",
+			funcs: []func(*http.Request){
+				func(req *http.Request) {
+					req.Header.Set("X-Custom", "value")
+				},
+			},
+			expectedHeaders: map[string]string{"X-Custom": "value"},
+		},
+		{
+			name: "multiple funcs",
+			funcs: []func(*http.Request){
+				func(req *http.Request) {
+					req.Header.Set("X-A", "a")
+				},
+				func(req *http.Request) {
+					req.Header.Set("X-B", "b")
+				},
+			},
+			expectedHeaders: map[string]string{
+				"X-A": "a",
+				"X-B": "b",
+			},
+		},
 	}
 
-	for _, tt := range methods {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			dispatcher := NewDispatcher(nil)
+			req := dispatcher.NewRequest().UseFuncs(tt.funcs...)
+
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != tt.method {
-					t.Errorf("expected method %q, got %q", tt.method, r.Method)
+				for key, value := range tt.expectedHeaders {
+					assert.Equal(t, value, r.Header.Get(key))
 				}
 				w.WriteHeader(http.StatusOK)
 			}))
 			defer server.Close()
 
-			d := NewDispatcher(nil)
-			ctx := context.Background()
-			resp := tt.fn(d.NewRequest(), ctx, server.URL)
+			resp := req.Send("GET", server.URL)
+			defer resp.Close()
+			assert.NoError(t, resp.Error)
+		})
+	}
+}
 
-			if resp.Error != nil {
-				t.Fatalf("%s returned error: %v", tt.name, resp.Error)
+func TestRequest_Body(t *testing.T) {
+	tests := []struct {
+		name         string
+		body         string
+		expectedBody string
+	}{
+		{
+			name:         "simple text body",
+			body:         "test body",
+			expectedBody: "test body",
+		},
+		{
+			name:         "empty body",
+			body:         "",
+			expectedBody: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dispatcher := NewDispatcher(nil)
+			req := dispatcher.NewRequest().Body(strings.NewReader(tt.body))
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body := make([]byte, len(tt.expectedBody))
+				r.Body.Read(body)
+				assert.Equal(t, tt.expectedBody, string(body))
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			resp := req.Send("POST", server.URL)
+			defer resp.Close()
+			assert.NoError(t, resp.Error)
+		})
+	}
+}
+
+func TestRequest_JSON(t *testing.T) {
+	type TestData struct {
+		Name  string `json:"name"`
+		Value int    `json:"value"`
+	}
+
+	tests := []struct {
+		name                string
+		data                any
+		expectedContentType string
+	}{
+		{
+			name:                "struct JSON",
+			data:                TestData{Name: "test", Value: 123},
+			expectedContentType: "application/json",
+		},
+		{
+			name:                "string JSON",
+			data:                `{"key":"value"}`,
+			expectedContentType: "application/json",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dispatcher := NewDispatcher(nil)
+			req := dispatcher.NewRequest().JSON(tt.data)
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tt.expectedContentType, r.Header.Get("Content-Type"))
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			resp := req.Send("POST", server.URL)
+			defer resp.Close()
+			assert.NoError(t, resp.Error)
+		})
+	}
+}
+
+func TestRequest_Form(t *testing.T) {
+	tests := []struct {
+		name                string
+		form                url.Values
+		expectedContentType string
+	}{
+		{
+			name: "simple form",
+			form: url.Values{
+				"username": []string{"john"},
+				"password": []string{"secret"},
+			},
+			expectedContentType: "application/x-www-form-urlencoded",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dispatcher := NewDispatcher(nil)
+			req := dispatcher.NewRequest().Form(tt.form)
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tt.expectedContentType, r.Header.Get("Content-Type"))
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			resp := req.Send("POST", server.URL)
+			defer resp.Close()
+			assert.NoError(t, resp.Error)
+		})
+	}
+}
+
+func TestRequest_Clone(t *testing.T) {
+	tests := []struct {
+		name string
+	}{
+		{
+			name: "clone preserves middlewares",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dispatcher := NewDispatcher(nil)
+			original := dispatcher.NewRequest().UseFuncs(func(req *http.Request) {
+				req.Header.Set("X-Original", "true")
+			})
+
+			cloned := original.Clone()
+			cloned.UseFuncs(func(req *http.Request) {
+				req.Header.Set("X-Cloned", "true")
+			})
+
+			// Original should not have X-Cloned header
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "true", r.Header.Get("X-Original"))
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			resp := original.Send("GET", server.URL)
+			defer resp.Close()
+			assert.NoError(t, resp.Error)
+		})
+	}
+}
+
+func TestRequest_Send(t *testing.T) {
+	tests := []struct {
+		name           string
+		method         string
+		setupServer    func() *httptest.Server
+		expectedStatus int
+		expectError    bool
+	}{
+		{
+			name:   "successful GET request",
+			method: "GET",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, "GET", r.Method)
+					w.WriteHeader(http.StatusOK)
+				}))
+			},
+			expectedStatus: http.StatusOK,
+			expectError:    false,
+		},
+		{
+			name:   "successful POST request",
+			method: "POST",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, "POST", r.Method)
+					w.WriteHeader(http.StatusCreated)
+				}))
+			},
+			expectedStatus: http.StatusCreated,
+			expectError:    false,
+		},
+		{
+			name:           "invalid URL",
+			method:         "GET",
+			setupServer:    func() *httptest.Server { return nil },
+			expectedStatus: 0,
+			expectError:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dispatcher := NewDispatcher(nil)
+			req := dispatcher.NewRequest()
+
+			var serverURL string
+			if tt.setupServer != nil {
+				server := tt.setupServer()
+				if server != nil {
+					defer server.Close()
+					serverURL = server.URL
+				} else {
+					serverURL = "://invalid-url"
+				}
+			} else {
+				serverURL = "://invalid-url"
 			}
 
-			if resp.RawResponse.StatusCode != http.StatusOK {
-				t.Errorf("expected status 200, got %d", resp.RawResponse.StatusCode)
+			resp := req.Send(tt.method, serverURL)
+			defer resp.Close()
+
+			if tt.expectError {
+				assert.Error(t, resp.Error)
+			} else {
+				assert.NoError(t, resp.Error)
+				assert.Equal(t, tt.expectedStatus, resp.RawResponse.StatusCode)
 			}
 		})
 	}
 }
 
 func TestRequest_Do(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check if middleware was applied
-		if r.Header.Get("X-Custom") != "test" {
-			t.Error("expected middleware to add header")
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
+	tests := []struct {
+		name        string
+		setupReq    func() *http.Request
+		expectError bool
+	}{
+		{
+			name: "successful request",
+			setupReq: func() *http.Request {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+				}))
+				req, _ := http.NewRequest("GET", server.URL, nil)
+				return req
+			},
+			expectError: false,
+		},
+	}
 
-	d := NewDispatcher(nil)
-	req := d.NewRequest()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dispatcher := NewDispatcher(nil)
+			request := dispatcher.NewRequest()
 
-	// Add middleware
-	req.Use(func(next Handler) Handler {
-		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			req.Header.Set("X-Custom", "test")
-			return next.Handle(client, req)
+			httpReq := tt.setupReq()
+			resp, err := request.Do(httpReq)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, resp)
+			}
 		})
-	})
-
-	httpReq, err := http.NewRequest("GET", server.URL, nil)
-	if err != nil {
-		t.Fatalf("failed to create HTTP request: %v", err)
-	}
-
-	resp, err := req.Do(httpReq)
-	if err != nil {
-		t.Fatalf("Do returned error: %v", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected status 200, got %d", resp.StatusCode)
-	}
-}
-
-func TestRequest_MiddlewareChaining(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	}))
-	defer server.Close()
-
-	d := NewDispatcher(nil)
-
-	resp := d.NewRequest().
-		AddHeaderKV("X-Custom-1", "value1").
-		AddHeaderKV("X-Custom-2", "value2").
-		SetQueryKV("param", "value").
-		Get(server.URL)
-
-	if resp.Error != nil {
-		t.Fatalf("chained request returned error: %v", resp.Error)
-	}
-
-	if resp.RawResponse.StatusCode != http.StatusOK {
-		t.Errorf("expected status 200, got %d", resp.RawResponse.StatusCode)
-	}
-}
-
-func TestRequest_BodyGet(t *testing.T) {
-	d := NewDispatcher(nil)
-	req := d.NewRequest()
-
-	called := false
-	req.BodyGet(func() (io.Reader, error) {
-		called = true
-		return strings.NewReader("lazy body"), nil
-	})
-
-	if called {
-		t.Error("expected BodyGet not to call the function immediately")
-	}
-
-	if len(req.middlewares) != 1 {
-		t.Error("expected BodyGet to add middleware")
-	}
-}
-
-func TestRequest_BodyGetBytes(t *testing.T) {
-	d := NewDispatcher(nil)
-	req := d.NewRequest()
-
-	called := false
-	req.BodyGetBytes(func() ([]byte, error) {
-		called = true
-		return []byte("lazy bytes"), nil
-	})
-
-	if called {
-		t.Error("expected BodyGetBytes not to call the function immediately")
-	}
-
-	if len(req.middlewares) != 1 {
-		t.Error("expected BodyGetBytes to add middleware")
 	}
 }

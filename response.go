@@ -21,8 +21,6 @@ type Response struct {
 	buffer      *bytes.Buffer
 }
 
-// buildResponse constructs a Response wrapper from raw http.Request and http.Response.
-// This centralizes response initialization logic and ensures consistent error handling.
 func buildResponse(req *http.Request, resp *http.Response, err error) *Response {
 	response := &Response{
 		Error:       err,
@@ -155,8 +153,6 @@ func (r *Response) ClearInternalBuffer() {
 	r.buffer.Reset()
 }
 
-// populateResponseByteBuffer reads the entire response body into the internal buffer.
-// This enables multiple reads of the response body without re-fetching.
 func (r *Response) populateResponseByteBuffer() {
 	if r.buffer.Len() != 0 {
 		return
@@ -178,8 +174,6 @@ func (r *Response) populateResponseByteBuffer() {
 	}
 }
 
-// getInternalReader returns the appropriate reader for the response body.
-// Uses the internal buffer if populated to allow multiple reads without re-fetching.
 func (r *Response) getInternalReader() io.Reader {
 	if r.buffer.Len() != 0 {
 		return r.buffer
