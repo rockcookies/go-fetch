@@ -1,265 +1,105 @@
 package fetch
 
 import (
+	"context"
 	"net/http"
+	"net/url"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestSetBaseURL(t *testing.T) {
+func TestPrepareURLMiddleware(t *testing.T) {
 	tests := []struct {
-		name        string
-		baseURL     string
-		requestURL  string
-		expectedURL string
+		name           string
+		setupURL       string
+		options        []func(*URLOptions)
+		expectedURL    string
+		expectedScheme string
+		expectedHost   string
+		expectedPath   string
 	}{
 		{
-			name:        "http URL with scheme",
-			baseURL:     "http://api.example.com",
-			requestURL:  "http://localhost/path",
-			expectedURL: "http://api.example.com/path",
+			name:           "base URL only",
+			setupURL:       "http://example.com/api",
+			options:        []func(*URLOptions){func(o *URLOptions) { o.BaseURL = "https://test.com" }},
+			expectedScheme: "https",
+			expectedHost:   "test.com",
 		},
 		{
-			name:        "https URL with scheme",
-			baseURL:     "https://api.example.com",
-			requestURL:  "http://localhost/path",
-			expectedURL: "https://api.example.com/path",
+			name:     "path params replacement",
+			setupURL: "http://example.com/users/{id}/posts/{postId}",
+			options: []func(*URLOptions){
+				func(o *URLOptions) {
+					o.PathParams = map[string]string{
+						"id":     "123",
+						"postId": "456",
+					}
+				},
+			},
+			expectedPath: "/users/123/posts/456",
 		},
 		{
-			name:        "URL without scheme defaults to http",
-			baseURL:     "api.example.com",
-			requestURL:  "http://localhost/path",
-			expectedURL: "http://api.example.com/path",
+			name:     "query params",
+			setupURL: "http://example.com/search",
+			options: []func(*URLOptions){
+				func(o *URLOptions) {
+					o.QueryParams = url.Values{
+						"q":     []string{"test"},
+						"limit": []string{"10"},
+					}
+				},
+			},
+			expectedPath: "/search",
 		},
 		{
-			name:        "base URL with port",
-			baseURL:     "http://api.example.com:8080",
-			requestURL:  "http://localhost/path",
-			expectedURL: "http://api.example.com:8080/path",
-		},
-		{
-			name:        "preserves query parameters",
-			baseURL:     "http://api.example.com",
-			requestURL:  "http://localhost/path?key=value",
-			expectedURL: "http://api.example.com/path?key=value",
-		},
-		{
-			name:        "base URL with path",
-			baseURL:     "http://api.example.com/v1",
-			requestURL:  "http://localhost/users",
-			expectedURL: "http://api.example.com/v1/users",
-		},
-		{
-			name:        "base URL with path and trailing slash",
-			baseURL:     "http://api.example.com/v1/",
-			requestURL:  "http://localhost/users",
-			expectedURL: "http://api.example.com/v1/users",
-		},
-		{
-			name:        "base URL with only root path",
-			baseURL:     "http://api.example.com/",
-			requestURL:  "http://localhost/users",
-			expectedURL: "http://api.example.com/users",
+			name:     "combined: base URL, path params, and query params",
+			setupURL: "http://localhost/api/users/{id}",
+			options: []func(*URLOptions){
+				func(o *URLOptions) {
+					o.BaseURL = "https://api.example.com"
+					o.PathParams = map[string]string{"id": "999"}
+					o.QueryParams = url.Values{"include": []string{"profile"}}
+				},
+			},
+			expectedScheme: "https",
+			expectedHost:   "api.example.com",
+			expectedPath:   "/api/users/999",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("GET", tt.requestURL, nil)
-			if err != nil {
-				t.Fatalf("failed to create request: %v", err)
-			}
+			middleware := PrepareURLMiddleware()
 
-			middleware := SetBaseURL(tt.baseURL)
+			// Create handler that just returns the modified request
 			handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-				if req.URL.String() != tt.expectedURL {
-					t.Errorf("expected URL %q, got %q", tt.expectedURL, req.URL.String())
+				if tt.expectedScheme != "" {
+					assert.Equal(t, tt.expectedScheme, req.URL.Scheme)
 				}
-				return nil, nil
+				if tt.expectedHost != "" {
+					assert.Equal(t, tt.expectedHost, req.URL.Host)
+				}
+				if tt.expectedPath != "" {
+					assert.Equal(t, tt.expectedPath, req.URL.Path)
+				}
+				return &http.Response{StatusCode: 200}, nil
 			}))
 
-			handler.Handle(&http.Client{}, req)
-		})
-	}
-}
+			req, err := http.NewRequest("GET", tt.setupURL, nil)
+			require.NoError(t, err)
 
-func TestSetPathSuffix(t *testing.T) {
-	tests := []struct {
-		name        string
-		initialURL  string
-		suffix      string
-		expectedURL string
-	}{
-		{
-			name:        "append simple suffix",
-			initialURL:  "http://example.com/api",
-			suffix:      "/users",
-			expectedURL: "http://example.com/api/users",
-		},
-		{
-			name:        "append suffix with leading slash",
-			initialURL:  "http://example.com/api/",
-			suffix:      "/users",
-			expectedURL: "http://example.com/api//users",
-		},
-		{
-			name:        "append suffix without leading slash",
-			initialURL:  "http://example.com/api",
-			suffix:      "users",
-			expectedURL: "http://example.com/apiusers",
-		},
-		{
-			name:        "append numeric suffix",
-			initialURL:  "http://example.com/users",
-			suffix:      "/123",
-			expectedURL: "http://example.com/users/123",
-		},
-		{
-			name:        "preserves query parameters",
-			initialURL:  "http://example.com/api?key=value",
-			suffix:      "/users",
-			expectedURL: "http://example.com/api/users?key=value",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("GET", tt.initialURL, nil)
-			if err != nil {
-				t.Fatalf("failed to create request: %v", err)
+			// Apply options to context
+			ctx := req.Context()
+			for _, opt := range tt.options {
+				ctx = WithURLOptions(ctx, opt)
 			}
+			req = req.WithContext(ctx)
 
-			middleware := SetPathSuffix(tt.suffix)
-			handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-				if req.URL.String() != tt.expectedURL {
-					t.Errorf("expected URL %q, got %q", tt.expectedURL, req.URL.String())
-				}
-				return nil, nil
-			}))
-
-			handler.Handle(&http.Client{}, req)
-		})
-	}
-}
-
-func TestSetPathPrefix(t *testing.T) {
-	tests := []struct {
-		name        string
-		initialURL  string
-		prefix      string
-		expectedURL string
-	}{
-		{
-			name:        "prepend simple prefix",
-			initialURL:  "http://example.com/users",
-			prefix:      "/api",
-			expectedURL: "http://example.com/api/users",
-		},
-		{
-			name:        "prepend API version prefix",
-			initialURL:  "http://example.com/users",
-			prefix:      "/api/v1",
-			expectedURL: "http://example.com/api/v1/users",
-		},
-		{
-			name:        "prefix with trailing slash",
-			initialURL:  "http://example.com/users",
-			prefix:      "/api/",
-			expectedURL: "http://example.com/api//users",
-		},
-		{
-			name:        "preserves query parameters",
-			initialURL:  "http://example.com/users?key=value",
-			prefix:      "/api",
-			expectedURL: "http://example.com/api/users?key=value",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("GET", tt.initialURL, nil)
-			if err != nil {
-				t.Fatalf("failed to create request: %v", err)
-			}
-
-			middleware := SetPathPrefix(tt.prefix)
-			handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-				if req.URL.String() != tt.expectedURL {
-					t.Errorf("expected URL %q, got %q", tt.expectedURL, req.URL.String())
-				}
-				return nil, nil
-			}))
-
-			handler.Handle(&http.Client{}, req)
-		})
-	}
-}
-
-func TestSetPathParams(t *testing.T) {
-	tests := []struct {
-		name        string
-		initialURL  string
-		params      map[string]string
-		expectedURL string
-	}{
-		{
-			name:       "replace single path parameter",
-			initialURL: "http://example.com/users/{id}",
-			params: map[string]string{
-				"id": "123",
-			},
-			expectedURL: "http://example.com/users/123",
-		},
-		{
-			name:       "replace multiple path parameters",
-			initialURL: "http://example.com/users/{userId}/posts/{postId}",
-			params: map[string]string{
-				"userId": "123",
-				"postId": "456",
-			},
-			expectedURL: "http://example.com/users/123/posts/456",
-		},
-		{
-			name:       "non-existent parameter does nothing",
-			initialURL: "http://example.com/users/{id}",
-			params: map[string]string{
-				"other": "value",
-			},
-			expectedURL: "http://example.com/users/%7Bid%7D",
-		},
-		{
-			name:       "partial replacement",
-			initialURL: "http://example.com/users/{id}/posts/{postId}",
-			params: map[string]string{
-				"id": "123",
-			},
-			expectedURL: "http://example.com/users/123/posts/%7BpostId%7D",
-		},
-		{
-			name:       "preserves query parameters",
-			initialURL: "http://example.com/users/{id}?key=value",
-			params: map[string]string{
-				"id": "123",
-			},
-			expectedURL: "http://example.com/users/123?key=value",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("GET", tt.initialURL, nil)
-			if err != nil {
-				t.Fatalf("failed to create request: %v", err)
-			}
-
-			middleware := SetPathParams(tt.params)
-			handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-				if req.URL.String() != tt.expectedURL {
-					t.Errorf("expected URL %q, got %q", tt.expectedURL, req.URL.String())
-				}
-				return nil, nil
-			}))
-
-			handler.Handle(&http.Client{}, req)
+			client := &http.Client{}
+			_, err = handler.Handle(client, req)
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -271,17 +111,17 @@ func TestNormalizePath(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "root path becomes empty",
+			name:     "root path",
 			path:     "/",
 			expected: "",
 		},
 		{
-			name:     "normal path unchanged",
+			name:     "normal path",
 			path:     "/api/users",
 			expected: "/api/users",
 		},
 		{
-			name:     "empty path unchanged",
+			name:     "empty path",
 			path:     "",
 			expected: "",
 		},
@@ -290,9 +130,7 @@ func TestNormalizePath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := normalizePath(tt.path)
-			if result != tt.expected {
-				t.Errorf("expected %q, got %q", tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -304,33 +142,68 @@ func TestNormalize(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "http URL unchanged",
+			name:     "http URL",
 			uri:      "http://example.com",
 			expected: "http://example.com",
 		},
 		{
-			name:     "https URL unchanged",
+			name:     "https URL",
 			uri:      "https://example.com",
 			expected: "https://example.com",
 		},
 		{
-			name:     "URL without scheme gets http prefix",
+			name:     "domain without protocol",
 			uri:      "example.com",
 			expected: "http://example.com",
 		},
 		{
-			name:     "URL with port without scheme gets http prefix",
-			uri:      "example.com:8080",
-			expected: "http://example.com:8080",
+			name:     "localhost without protocol",
+			uri:      "localhost:8080",
+			expected: "http://localhost:8080",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := normalize(tt.uri)
-			if result != tt.expected {
-				t.Errorf("expected %q, got %q", tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestWithURLOptions(t *testing.T) {
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		options  []func(*URLOptions)
+		validate func(t *testing.T, ctx context.Context)
+	}{
+		{
+			name: "add options to context",
+			ctx:  context.Background(),
+			options: []func(*URLOptions){
+				func(o *URLOptions) { o.BaseURL = "https://api.example.com" },
+			},
+			validate: func(t *testing.T, ctx context.Context) {
+				assert.NotNil(t, ctx)
+			},
+		},
+		{
+			name: "nil context creates background",
+			ctx:  nil,
+			options: []func(*URLOptions){
+				func(o *URLOptions) { o.BaseURL = "https://test.com" },
+			},
+			validate: func(t *testing.T, ctx context.Context) {
+				assert.NotNil(t, ctx)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := WithURLOptions(tt.ctx, tt.options...)
+			tt.validate(t, ctx)
 		})
 	}
 }

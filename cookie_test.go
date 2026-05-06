@@ -1,177 +1,267 @@
 package fetch
 
 import (
+	"context"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestAddCookie(t *testing.T) {
+func TestPrepareCookieMiddleware(t *testing.T) {
 	tests := []struct {
-		name           string
-		cookies        []*http.Cookie
-		expectedCount  int
-		expectedNames  []string
-		expectedValues []string
+		name            string
+		options         []func(*CookieOptions)
+		expectedCookies []*http.Cookie
 	}{
 		{
-			name: "add single cookie",
-			cookies: []*http.Cookie{
-				{Name: "session", Value: "abc123"},
-			},
-			expectedCount:  1,
-			expectedNames:  []string{"session"},
-			expectedValues: []string{"abc123"},
+			name:            "no cookies",
+			options:         []func(*CookieOptions){},
+			expectedCookies: []*http.Cookie{},
 		},
 		{
-			name: "add multiple cookies",
-			cookies: []*http.Cookie{
-				{Name: "session", Value: "abc123"},
-				{Name: "token", Value: "xyz789"},
-			},
-			expectedCount:  2,
-			expectedNames:  []string{"session", "token"},
-			expectedValues: []string{"abc123", "xyz789"},
-		},
-		{
-			name: "cookie with path and domain",
-			cookies: []*http.Cookie{
-				{
-					Name:   "secure",
-					Value:  "value",
-					Path:   "/api",
-					Domain: ".example.com",
+			name: "single cookie",
+			options: []func(*CookieOptions){
+				func(opts *CookieOptions) {
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "session", Value: "token123"})
 				},
 			},
-			expectedCount:  1,
-			expectedNames:  []string{"secure"},
-			expectedValues: []string{"value"},
+			expectedCookies: []*http.Cookie{
+				{Name: "session", Value: "token123"},
+			},
 		},
 		{
-			name:          "no cookies",
-			cookies:       []*http.Cookie{},
-			expectedCount: 0,
+			name: "multiple cookies",
+			options: []func(*CookieOptions){
+				func(opts *CookieOptions) {
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "session", Value: "token123"})
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "user", Value: "john"})
+				},
+			},
+			expectedCookies: []*http.Cookie{
+				{Name: "session", Value: "token123"},
+				{Name: "user", Value: "john"},
+			},
+		},
+		{
+			name: "cookies from multiple option functions",
+			options: []func(*CookieOptions){
+				func(opts *CookieOptions) {
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "cookie1", Value: "value1"})
+				},
+				func(opts *CookieOptions) {
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "cookie2", Value: "value2"})
+				},
+			},
+			expectedCookies: []*http.Cookie{
+				{Name: "cookie1", Value: "value1"},
+				{Name: "cookie2", Value: "value2"},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("GET", "http://example.com/path", nil)
-			if err != nil {
-				t.Fatalf("failed to create request: %v", err)
-			}
-
-			middleware := AddCookie(tt.cookies...)
+			middleware := PrepareCookieMiddleware()
 			handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 				cookies := req.Cookies()
-				if len(cookies) != tt.expectedCount {
-					t.Errorf("expected %d cookies, got %d", tt.expectedCount, len(cookies))
+				assert.Len(t, cookies, len(tt.expectedCookies))
+
+				for i, expectedCookie := range tt.expectedCookies {
+					if i < len(cookies) {
+						assert.Equal(t, expectedCookie.Name, cookies[i].Name)
+						assert.Equal(t, expectedCookie.Value, cookies[i].Value)
+					}
 				}
 
-				for i, expectedName := range tt.expectedNames {
-					found := false
-					for _, cookie := range cookies {
-						if cookie.Name == expectedName {
-							found = true
-							if cookie.Value != tt.expectedValues[i] {
-								t.Errorf("expected cookie %q to have value %q, got %q",
-									expectedName, tt.expectedValues[i], cookie.Value)
-							}
-							break
-						}
-					}
-					if !found {
-						t.Errorf("expected cookie %q not found", expectedName)
-					}
-				}
-				return nil, nil
+				return &http.Response{StatusCode: 200}, nil
 			}))
 
-			handler.Handle(&http.Client{}, req)
+			req, err := http.NewRequest("GET", "http://example.com", nil)
+			require.NoError(t, err)
+
+			// Apply options to context
+			if len(tt.options) > 0 {
+				ctx := req.Context()
+				for _, opt := range tt.options {
+					ctx = WithCookieOptions(ctx, opt)
+				}
+				req = req.WithContext(ctx)
+			}
+
+			client := &http.Client{}
+			_, err = handler.Handle(client, req)
+			assert.NoError(t, err)
 		})
 	}
 }
 
-func TestAddCookie_Duplicate(t *testing.T) {
-	// Test that AddCookie preserves duplicate cookie names
-	req, err := http.NewRequest("GET", "http://example.com/path", nil)
-	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
-	}
-
-	// First add a cookie
-	middleware1 := AddCookie(&http.Cookie{Name: "key", Value: "value1"})
-	handler1 := middleware1(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-		return nil, nil
-	}))
-	handler1.Handle(&http.Client{}, req)
-
-	// Then add another cookie with the same name
-	middleware2 := AddCookie(&http.Cookie{Name: "key", Value: "value2"})
-	handler2 := middleware2(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-		cookies := req.Cookies()
-		if len(cookies) != 2 {
-			t.Errorf("expected 2 cookies, got %d", len(cookies))
-		}
-
-		values := make(map[string]bool)
-		for _, c := range cookies {
-			if c.Name == "key" {
-				values[c.Value] = true
-			}
-		}
-
-		if !values["value1"] || !values["value2"] {
-			t.Errorf("expected both cookie values to be present, got %v", values)
-		}
-		return nil, nil
-	}))
-
-	handler2.Handle(&http.Client{}, req)
-}
-
-func TestDelAllCookies(t *testing.T) {
+func TestSetCookieOptions(t *testing.T) {
 	tests := []struct {
-		name          string
-		setupCookies  []*http.Cookie
-		expectedCount int
+		name            string
+		options         []func(*CookieOptions)
+		expectedCookies []*http.Cookie
 	}{
 		{
-			name: "delete all cookies",
-			setupCookies: []*http.Cookie{
-				{Name: "session", Value: "abc123"},
-				{Name: "token", Value: "xyz789"},
+			name: "single option function",
+			options: []func(*CookieOptions){
+				func(opts *CookieOptions) {
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "test", Value: "value"})
+				},
 			},
-			expectedCount: 0,
+			expectedCookies: []*http.Cookie{
+				{Name: "test", Value: "value"},
+			},
 		},
 		{
-			name:          "no cookies to delete",
-			setupCookies:  []*http.Cookie{},
-			expectedCount: 0,
+			name: "multiple option functions",
+			options: []func(*CookieOptions){
+				func(opts *CookieOptions) {
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "first", Value: "val1"})
+				},
+				func(opts *CookieOptions) {
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "second", Value: "val2"})
+				},
+			},
+			expectedCookies: []*http.Cookie{
+				{Name: "first", Value: "val1"},
+				{Name: "second", Value: "val2"},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("GET", "http://example.com/path", nil)
-			if err != nil {
-				t.Fatalf("failed to create request: %v", err)
-			}
+			setCookieMW := SetCookieOptions(tt.options...)
+			prepareMW := PrepareCookieMiddleware()
 
-			// Add cookies first
-			for _, cookie := range tt.setupCookies {
-				req.AddCookie(cookie)
-			}
+			// Compose middlewares: SetCookieOptions -> PrepareCookieMiddleware -> Handler
+			handler := setCookieMW(prepareMW(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+				cookies := req.Cookies()
+				assert.Len(t, cookies, len(tt.expectedCookies))
 
-			middleware := DelAllCookies()
-			handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-				// Check that Cookie header is removed
-				if cookieHeader := req.Header.Get("Cookie"); cookieHeader != "" {
-					t.Errorf("expected Cookie header to be empty, got %q", cookieHeader)
+				for i, expectedCookie := range tt.expectedCookies {
+					if i < len(cookies) {
+						assert.Equal(t, expectedCookie.Name, cookies[i].Name)
+						assert.Equal(t, expectedCookie.Value, cookies[i].Value)
+					}
 				}
-				return nil, nil
-			}))
 
-			handler.Handle(&http.Client{}, req)
+				return &http.Response{StatusCode: 200}, nil
+			})))
+
+			req, err := http.NewRequest("GET", "http://example.com", nil)
+			require.NoError(t, err)
+
+			client := &http.Client{}
+			_, err = handler.Handle(client, req)
+			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestWithCookieOptions(t *testing.T) {
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		options  []func(*CookieOptions)
+		validate func(t *testing.T, ctx context.Context)
+	}{
+		{
+			name: "add options to context",
+			ctx:  context.Background(),
+			options: []func(*CookieOptions){
+				func(opts *CookieOptions) {
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "test", Value: "value"})
+				},
+			},
+			validate: func(t *testing.T, ctx context.Context) {
+				assert.NotNil(t, ctx)
+				// Verify context contains cookie options
+				val, ok := prepareCookieKey.GetValue(ctx)
+				assert.True(t, ok)
+				assert.Len(t, val, 1)
+			},
+		},
+		{
+			name: "nil context creates background",
+			ctx:  nil,
+			options: []func(*CookieOptions){
+				func(opts *CookieOptions) {
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "cookie", Value: "val"})
+				},
+			},
+			validate: func(t *testing.T, ctx context.Context) {
+				assert.NotNil(t, ctx)
+			},
+		},
+		{
+			name: "multiple options accumulated",
+			ctx:  context.Background(),
+			options: []func(*CookieOptions){
+				func(opts *CookieOptions) {
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "c1", Value: "v1"})
+				},
+				func(opts *CookieOptions) {
+					opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "c2", Value: "v2"})
+				},
+			},
+			validate: func(t *testing.T, ctx context.Context) {
+				val, ok := prepareCookieKey.GetValue(ctx)
+				assert.True(t, ok)
+				assert.Len(t, val, 2)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := WithCookieOptions(tt.ctx, tt.options...)
+			tt.validate(t, ctx)
+		})
+	}
+}
+
+func TestCookieOptions_Integration(t *testing.T) {
+	t.Run("cookies from context", func(t *testing.T) {
+		middleware := PrepareCookieMiddleware()
+		handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+			cookies := req.Cookies()
+			require.Len(t, cookies, 1)
+			assert.Equal(t, "ctx_cookie", cookies[0].Name)
+			assert.Equal(t, "ctx_value", cookies[0].Value)
+			return &http.Response{StatusCode: 200}, nil
+		}))
+
+		req, _ := http.NewRequest("GET", "http://example.com", nil)
+		ctx := WithCookieOptions(req.Context(), func(opts *CookieOptions) {
+			opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "ctx_cookie", Value: "ctx_value"})
+		})
+		req = req.WithContext(ctx)
+
+		client := &http.Client{}
+		_, err := handler.Handle(client, req)
+		assert.NoError(t, err)
+	})
+
+	t.Run("cookies from SetCookieOptions middleware", func(t *testing.T) {
+		setCookieMW := SetCookieOptions(func(opts *CookieOptions) {
+			opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "mw_cookie", Value: "mw_value"})
+		})
+		prepareMW := PrepareCookieMiddleware()
+
+		handler := setCookieMW(prepareMW(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+			cookies := req.Cookies()
+			require.Len(t, cookies, 1)
+			assert.Equal(t, "mw_cookie", cookies[0].Name)
+			assert.Equal(t, "mw_value", cookies[0].Value)
+			return &http.Response{StatusCode: 200}, nil
+		})))
+
+		req, _ := http.NewRequest("GET", "http://example.com", nil)
+		client := &http.Client{}
+		_, err := handler.Handle(client, req)
+		assert.NoError(t, err)
+	})
 }
