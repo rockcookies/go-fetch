@@ -125,7 +125,9 @@ func BodyJSON(data any, opts ...func(*BodyOptions)) Middleware {
 				return nil, err
 			}
 
-			return buf.Bytes(), nil
+			b := make([]byte, buf.Len())
+			copy(b, buf.Bytes())
+			return b, nil
 		}
 	}, append([]func(*BodyOptions){
 		func(o *BodyOptions) {
@@ -152,7 +154,9 @@ func BodyXML(data any, opts ...func(*BodyOptions)) Middleware {
 				return nil, err
 			}
 
-			return buf.Bytes(), nil
+			b := make([]byte, buf.Len())
+			copy(b, buf.Bytes())
+			return b, nil
 		}
 	}, append([]func(*BodyOptions){
 		func(o *BodyOptions) {
@@ -170,7 +174,9 @@ func BodyForm(data url.Values, opts ...func(*BodyOptions)) Middleware {
 
 		buf.WriteString(data.Encode())
 
-		return buf.Bytes(), nil
+		b := make([]byte, buf.Len())
+		copy(b, buf.Bytes())
+		return b, nil
 	}, append([]func(*BodyOptions){
 		func(o *BodyOptions) {
 			o.ContentType = "application/x-www-form-urlencoded"
