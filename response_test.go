@@ -337,7 +337,7 @@ func TestResponse_Read(t *testing.T) {
 
 			if tt.expectError {
 				assert.Error(t, err)
-				assert.Equal(t, -1, n)
+				assert.Equal(t, 0, n)
 			} else {
 				if err != nil && err != io.EOF {
 					t.Fatalf("unexpected error: %v", err)

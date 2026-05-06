@@ -1,102 +1,86 @@
 package fetch
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/rockcookies/go-fetch/internal/utils"
 )
 
-// SetBaseURL returns a middleware that sets the base URL (scheme and host) for the request.
-// If the URI doesn't include a scheme (http:// or https://), it defaults to http://.
-//
-// This is useful for targeting different environments (dev, staging, prod) or when the
-// base URL needs to be determined dynamically.
-//
-// Example:
-//
-//	// Both will set the base URL to http://api.example.com
-//	fetch.SetBaseURL("http://api.example.com")
-//	fetch.SetBaseURL("api.example.com")
-func SetBaseURL(uri string) Middleware {
+// URLOptions configures URL construction with base URL, path parameters, and query parameters.
+type URLOptions struct {
+	BaseURL     string
+	PathParams  map[string]string
+	QueryParams url.Values
+}
+
+var prepareURLKey = utils.NewContextKey[[]func(*URLOptions)]("prepare_url")
+
+// PrepareURLMiddleware creates middleware that processes URL options.
+// It applies base URL, path parameters, and query parameters to the request.
+func PrepareURLMiddleware() Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			u, err := url.Parse(normalize(uri))
-			if err != nil {
-				return nil, err
+			options, _ := getOptions(&prepareURLKey, req, func() *URLOptions {
+				return &URLOptions{
+					PathParams:  map[string]string{},
+					QueryParams: url.Values{},
+				}
+			})
+
+			if options == nil {
+				return h.Handle(client, req)
 			}
 
-			req.URL.Scheme = u.Scheme
-			req.URL.Host = u.Host
+			// Apply BaseURL
+			if len(options.BaseURL) > 0 {
+				baseURL, err := url.Parse(normalize(options.BaseURL))
+				if err != nil {
+					return nil, &InvalidRequestError{err: err}
+				}
 
-			if u.Path != "" && u.Path != "/" {
-				// Remove trailing slash to prevent double slashes when concatenating
-				basePath := strings.TrimSuffix(u.Path, "/")
-				req.URL.Path = basePath + req.URL.Path
+				req.URL.Scheme = baseURL.Scheme
+				req.URL.Host = baseURL.Host
+
+				if baseURL.Path != "" && baseURL.Path != "/" {
+					req.URL.Path = normalizePath(req.URL.Path)
+				}
 			}
 
-			return h.Handle(client, req)
-		})
-	}
-}
-
-// SetPathSuffix returns a middleware that appends a path segment to the request URL's path.
-// This is useful for adding API versions or resource identifiers to the end of a path.
-//
-// Example:
-//
-//	// Request URL: /api/users
-//	// After SetPathSuffix("/123"): /api/users/123
-func SetPathSuffix(suffix string) Middleware {
-	return func(h Handler) Handler {
-		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			req.URL.Path += normalizePath(suffix)
-			return h.Handle(client, req)
-		})
-	}
-}
-
-// SetPathPrefix returns a middleware that prepends a path segment to the request URL's path.
-// This is useful for adding API base paths or namespace prefixes.
-//
-// Example:
-//
-//	// Request URL: /users
-//	// After SetPathPrefix("/api/v1"): /api/v1/users
-func SetPathPrefix(prefix string) Middleware {
-	return func(h Handler) Handler {
-		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			req.URL.Path = normalizePath(prefix) + req.URL.Path
-			return h.Handle(client, req)
-		})
-	}
-}
-
-// SetPathParams returns a middleware that replaces path parameter placeholders with actual values.
-// Placeholders should be in the format {key}, and they will be replaced with the corresponding
-// value from the params map.
-//
-// This is useful for RESTful APIs with path parameters like /users/{id}/posts/{postId}.
-//
-// Example:
-//
-//	// Request URL: /users/{id}/posts/{postId}
-//	// After SetPathParams(map[string]string{"id": "123", "postId": "456"})
-//	// Result: /users/123/posts/456
-func SetPathParams(params map[string]string) Middleware {
-	return func(h Handler) Handler {
-		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			for key, value := range params {
+			// Apply PathParams
+			for key, value := range options.PathParams {
 				placeholder := "{" + key + "}"
 				req.URL.Path = strings.ReplaceAll(req.URL.Path, placeholder, value)
 			}
+
+			// Apply QueryParams
+			if len(options.QueryParams) > 0 {
+				if req.URL.RawQuery == "" {
+					req.URL.RawQuery = options.QueryParams.Encode()
+				} else {
+					req.URL.RawQuery = req.URL.RawQuery + "&" + options.QueryParams.Encode()
+				}
+			}
+
 			return h.Handle(client, req)
 		})
 	}
 }
 
-// normalizePath removes trailing slashes to ensure consistent path handling.
-// This prevents double slashes when concatenating path segments.
+// SetURLOptions creates middleware that applies URL option modifiers.
+func SetURLOptions(funcs ...func(*URLOptions)) Middleware {
+	return withOptionsMiddleware(&prepareURLKey, funcs...)
+}
+
+// WithURLOptions adds URL options to the context.
+// Used when building requests programmatically.
+func WithURLOptions(ctx context.Context, options ...func(*URLOptions)) context.Context {
+	return withOptions(ctx, &prepareURLKey, options...)
+}
+
 func normalizePath(path string) string {
 	if path == "/" {
 		return ""
@@ -104,11 +88,10 @@ func normalizePath(path string) string {
 	return path
 }
 
-// normalize ensures the URI has a scheme prefix.
-// Defaults to http:// if no scheme is present, simplifying user input.
+var reHTTP = regexp.MustCompile(`^https?://`)
+
 func normalize(uri string) string {
-	match, _ := regexp.MatchString("^http[s]?://", uri)
-	if match {
+	if reHTTP.MatchString(uri) {
 		return uri
 	}
 	return "http://" + uri

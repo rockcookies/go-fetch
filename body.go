@@ -11,17 +11,31 @@ import (
 	"github.com/rockcookies/go-fetch/internal/bufferpool"
 )
 
-// SetBody sets the request body from an io.Reader.
-// Note: The reader is consumed and cannot be retried. Use SetBodyGet for retry support.
-func SetBody(reader io.Reader) Middleware {
+// BodyOptions configures how the request body is handled.
+type BodyOptions struct {
+	ContentType          string
+	AutoSetContentLength bool
+}
+
+// BodyReader creates middleware that sets the request body from an io.Reader.
+// It can optionally set Content-Type and Content-Length headers.
+func BodyReader(reader io.Reader, opts ...func(*BodyOptions)) Middleware {
+	options := applyOptions(&BodyOptions{}, opts...)
+
 	return func(handler Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 			if reader != nil {
 				req.Body = io.NopCloser(reader)
 
-				switch r := reader.(type) {
-				case interface{ Len() int }:
-					req.ContentLength = int64(r.Len())
+				if options.AutoSetContentLength && req.ContentLength == 0 {
+					switch r := reader.(type) {
+					case interface{ Len() int }:
+						req.ContentLength = int64(r.Len())
+					}
+				}
+
+				if options.ContentType != "" {
+					req.Header.Set("Content-Type", options.ContentType)
 				}
 			}
 
@@ -30,9 +44,11 @@ func SetBody(reader io.Reader) Middleware {
 	}
 }
 
-// SetBodyGet lazily provides the request body via a getter function.
-// The getter is called on each request attempt, enabling retry support.
-func SetBodyGet(getReader func() (io.Reader, error)) Middleware {
+// BodyGetReader creates middleware that lazily provides the request body.
+// The getter function is called when the body is needed, supporting retries.
+func BodyGetReader(getReader func() (io.Reader, error), opts ...func(*BodyOptions)) Middleware {
+	options := applyOptions(&BodyOptions{}, opts...)
+
 	return func(handler Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 			if getReader != nil {
@@ -49,6 +65,10 @@ func SetBodyGet(getReader func() (io.Reader, error)) Middleware {
 
 					return rc, nil
 				}
+
+				if options.ContentType != "" {
+					req.Header.Set("Content-Type", options.ContentType)
+				}
 			}
 
 			return handler.Handle(client, req)
@@ -56,7 +76,11 @@ func SetBodyGet(getReader func() (io.Reader, error)) Middleware {
 	}
 }
 
-func setBodyGetBytes(getBytes func() ([]byte, error), contentType string) Middleware {
+// BodyGetBytes creates middleware that lazily provides the request body as bytes.
+// This is more efficient than BodyGetReader when the body size is known.
+func BodyGetBytes(getBytes func() ([]byte, error), opts ...func(*BodyOptions)) Middleware {
+	options := applyOptions(&BodyOptions{}, opts...)
+
 	return func(handler Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 			if getBytes != nil {
@@ -65,13 +89,16 @@ func setBodyGetBytes(getBytes func() ([]byte, error), contentType string) Middle
 					return nil, err
 				}
 
-				req.ContentLength = int64(len(data))
 				req.GetBody = func() (io.ReadCloser, error) {
 					return io.NopCloser(bytes.NewReader(data)), nil
 				}
 
-				if contentType != "" {
-					req.Header.Set("Content-Type", contentType)
+				if options.AutoSetContentLength && req.ContentLength == 0 {
+					req.ContentLength = int64(len(data))
+				}
+
+				if options.ContentType != "" {
+					req.Header.Set("Content-Type", options.ContentType)
 				}
 			}
 
@@ -80,15 +107,11 @@ func setBodyGetBytes(getBytes func() ([]byte, error), contentType string) Middle
 	}
 }
 
-// SetBodyGetBytes lazily provides the request body as bytes, supporting retries.
-func SetBodyGetBytes(getBytes func() ([]byte, error)) Middleware {
-	return setBodyGetBytes(getBytes, "")
-}
-
-// SetBodyJSON marshals data to JSON as the request body.
-// Sets Content-Type to application/json.
-func SetBodyJSON(data any) Middleware {
-	return setBodyGetBytes(func() ([]byte, error) {
+// BodyJSON creates middleware that marshals data to JSON and sets it as the request body.
+// Accepts string, []byte, or any marshallable type.
+// Automatically sets Content-Type to application/json.
+func BodyJSON(data any, opts ...func(*BodyOptions)) Middleware {
+	return BodyGetBytes(func() ([]byte, error) {
 		switch v := data.(type) {
 		case string:
 			return []byte(v), nil
@@ -102,15 +125,22 @@ func SetBodyJSON(data any) Middleware {
 				return nil, err
 			}
 
-			return buf.Bytes(), nil
+			b := make([]byte, buf.Len())
+			copy(b, buf.Bytes())
+			return b, nil
 		}
-	}, "application/json")
+	}, append([]func(*BodyOptions){
+		func(o *BodyOptions) {
+			o.ContentType = "application/json"
+		},
+	}, opts...)...)
 }
 
-// SetBodyXML marshals data to XML as the request body.
-// Sets Content-Type to application/xml.
-func SetBodyXML(data any) Middleware {
-	return setBodyGetBytes(func() ([]byte, error) {
+// BodyXML creates middleware that marshals data to XML and sets it as the request body.
+// Accepts string, []byte, or any marshallable type.
+// Automatically sets Content-Type to application/xml.
+func BodyXML(data any, opts ...func(*BodyOptions)) Middleware {
+	return BodyGetBytes(func() ([]byte, error) {
 		switch v := data.(type) {
 		case string:
 			return []byte(v), nil
@@ -124,20 +154,32 @@ func SetBodyXML(data any) Middleware {
 				return nil, err
 			}
 
-			return buf.Bytes(), nil
+			b := make([]byte, buf.Len())
+			copy(b, buf.Bytes())
+			return b, nil
 		}
-	}, "application/xml")
+	}, append([]func(*BodyOptions){
+		func(o *BodyOptions) {
+			o.ContentType = "application/xml"
+		},
+	}, opts...)...)
 }
 
-// SetBodyForm encodes form data as the request body.
-// Sets Content-Type to application/x-www-form-urlencoded.
-func SetBodyForm(data url.Values) Middleware {
-	return setBodyGetBytes(func() ([]byte, error) {
+// BodyForm creates middleware that encodes form data and sets it as the request body.
+// Automatically sets Content-Type to application/x-www-form-urlencoded.
+func BodyForm(data url.Values, opts ...func(*BodyOptions)) Middleware {
+	return BodyGetBytes(func() ([]byte, error) {
 		buf := bufferpool.Get()
 		defer bufferpool.Put(buf)
 
 		buf.WriteString(data.Encode())
 
-		return buf.Bytes(), nil
-	}, "application/x-www-form-urlencoded")
+		b := make([]byte, buf.Len())
+		copy(b, buf.Bytes())
+		return b, nil
+	}, append([]func(*BodyOptions){
+		func(o *BodyOptions) {
+			o.ContentType = "application/x-www-form-urlencoded"
+		},
+	}, opts...)...)
 }

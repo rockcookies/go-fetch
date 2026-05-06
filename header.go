@@ -1,73 +1,68 @@
 package fetch
 
 import (
+	"context"
 	"net/http"
+
+	"github.com/rockcookies/go-fetch/internal/utils"
 )
 
-// SetHeader applies functions to modify request headers.
-// Functions execute in order. Use this for complex header logic beyond simple key-value pairs.
-func SetHeader(funcs ...func(h http.Header)) Middleware {
+// HeaderOptions holds the configuration for HTTP headers in a request.
+// The Header field contains all headers that will be set on the request.
+type HeaderOptions struct {
+	Header http.Header
+}
+
+var prepareHeaderKey = utils.NewContextKey[[]func(*HeaderOptions)]("prepare_header")
+
+// PrepareHeaderMiddleware creates a middleware that applies header options from the request context.
+// It retrieves header configuration functions stored in the context, executes them to build
+// the final HeaderOptions, and replaces the request headers with the configured values.
+// This middleware should be used in conjunction with SetHeaderOptions or WithHeaderOptions.
+func PrepareHeaderMiddleware() Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			for _, f := range funcs {
-				f(req.Header)
+			options, _ := getOptions(&prepareHeaderKey, req, func() *HeaderOptions {
+				return &HeaderOptions{
+					Header: req.Header,
+				}
+			})
+
+			if options == nil {
+				return h.Handle(client, req)
 			}
+
+			req.Header = options.Header
 			return h.Handle(client, req)
 		})
 	}
 }
 
-// AddHeaderKV adds a header value. Preserves existing values for the same key.
-func AddHeaderKV(key, value string) Middleware {
-	return SetHeader(func(h http.Header) {
-		h.Add(key, value)
-	})
+// SetHeaderOptions creates a middleware that stores header configuration functions in the request.
+// These functions will be executed by PrepareHeaderMiddleware to configure headers.
+// Multiple configuration functions can be passed and will be applied in sequence.
+//
+// WithHeaderOptions adds header configuration functions to a context.
+// This allows header options to be set at the context level and propagated through the request chain.
+// The returned context should be used with http.Request.WithContext.
+//
+// Example:
+//
+//	ctx := fetch.WithHeaderOptions(context.Background(), func(opts *fetch.HeaderOptions) {
+//	    opts.Header.Set("Authorization", "Bearer token123")
+//	})
+//	req = req.WithContext(ctx)
+//
+// Example:
+//
+//	dispatcher.Use(fetch.SetHeaderOptions(func(opts *fetch.HeaderOptions) {
+//	    opts.Header.Set("User-Agent", "MyApp/1.0")
+//	    opts.Header.Set("Accept", "application/json")
+//	}))
+func SetHeaderOptions(opts ...func(*HeaderOptions)) Middleware {
+	return withOptionsMiddleware(&prepareHeaderKey, opts...)
 }
 
-// SetHeaderKV sets a header value. Replaces existing values for the same key.
-func SetHeaderKV(key, value string) Middleware {
-	return SetHeader(func(h http.Header) {
-		h.Set(key, value)
-	})
-}
-
-// AddHeaderFromMap adds multiple headers from a map. Preserves existing values.
-func AddHeaderFromMap(headers map[string]string) Middleware {
-	return SetHeader(func(h http.Header) {
-		for k, v := range headers {
-			h.Add(k, v)
-		}
-	})
-}
-
-// SetHeaderFromMap sets multiple headers from a map. Replaces existing values.
-func SetHeaderFromMap(headers map[string]string) Middleware {
-	return SetHeader(func(h http.Header) {
-		for k, v := range headers {
-			h.Set(k, v)
-		}
-	})
-}
-
-// DelHeader removes headers by key.
-func DelHeader(keys ...string) Middleware {
-	return SetHeader(func(h http.Header) {
-		for _, k := range keys {
-			h.Del(k)
-		}
-	})
-}
-
-// SetContentType sets the Content-Type header.
-func SetContentType(contentType string) Middleware {
-	return SetHeader(func(h http.Header) {
-		h.Set("Content-Type", contentType)
-	})
-}
-
-// SetUserAgent sets the User-Agent header.
-func SetUserAgent(userAgent string) Middleware {
-	return SetHeader(func(h http.Header) {
-		h.Set("User-Agent", userAgent)
-	})
+func WithHeaderOptions(ctx context.Context, opts ...func(*HeaderOptions)) context.Context {
+	return withOptions(ctx, &prepareHeaderKey, opts...)
 }

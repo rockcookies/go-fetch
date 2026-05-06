@@ -2,10 +2,12 @@ package fetch
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"strings"
 	"time"
 )
 
@@ -39,20 +41,23 @@ type MultipartOptions struct {
 	Boundary string
 }
 
+var escapeQuotesReplacer = strings.NewReplacer("\\", "\\\\", `"`, `\"`)
+
+func escapeQuotes(s string) string {
+	return escapeQuotesReplacer.Replace(s)
+}
+
 func createMultipartHeader(mf *MultipartField, contentType string) textproto.MIMEHeader {
 	h := make(textproto.MIMEHeader)
 
+	cd := fmt.Sprintf(`form-data; name="%s"`, escapeQuotes(mf.Name))
 	if mf.FileName != "" {
-		h.Add("name", mf.Name)
+		cd += fmt.Sprintf(`; filename="%s"`, escapeQuotes(mf.FileName))
 	}
-
-	if mf.FileName != "" {
-		h.Add("filename", mf.FileName)
-	}
-
 	for k, v := range mf.ExtraContentDisposition {
-		h.Add(k, v)
+		cd += fmt.Sprintf(`; %s="%s"`, k, escapeQuotes(v))
 	}
+	h.Set("Content-Disposition", cd)
 
 	if contentType != "" {
 		h.Set("Content-Type", contentType)
@@ -81,7 +86,7 @@ func createMultipart(w *multipart.Writer, mf *MultipartField) error {
 	seeEOF := false
 	size, err := content.Read(buf)
 	if err != nil {
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			seeEOF = true
 		} else {
 			return err

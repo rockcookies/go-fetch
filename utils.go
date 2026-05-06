@@ -1,12 +1,13 @@
 package fetch
 
 import (
+	"context"
 	"net/http"
+	"slices"
+
+	"github.com/rockcookies/go-fetch/internal/utils"
 )
 
-// cloneClient creates a shallow copy of an http.Client.
-// This prevents modifications to one client from affecting others.
-// Returns nil if the input client is nil.
 func cloneClient(client *http.Client) *http.Client {
 	if client == nil {
 		return nil
@@ -15,9 +16,6 @@ func cloneClient(client *http.Client) *http.Client {
 	return &clone
 }
 
-// applyOptions applies a series of option functions to an options struct.
-// This implements the functional options pattern, which allows for flexible
-// and extensible configuration without breaking API compatibility.
 func applyOptions[T any](options *T, opts ...func(*T)) *T {
 	for _, opt := range opts {
 		opt(options)
@@ -26,12 +24,45 @@ func applyOptions[T any](options *T, opts ...func(*T)) *T {
 	return options
 }
 
-// compose combines multiple middleware into a single middleware.
-// Middleware are applied in the order provided: the first middleware in the slice
-// is the outermost layer, and the last middleware is the innermost layer.
-//
-// This follows the standard middleware composition pattern where each middleware
-// wraps the next handler in the chain.
+func getOptions[T any](key *utils.ContextKey[[]func(T)], req *http.Request, defaults func() T) (T, bool) {
+	var options T
+
+	opts, ok := key.GetValue(req.Context())
+
+	if ok {
+		options = defaults()
+
+		for _, opt := range opts {
+			opt(options)
+		}
+	}
+
+	return options, ok
+}
+
+func withOptions[T any](ctx context.Context, key *utils.ContextKey[[]T], opts ...T) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	existingOpts, _ := key.GetValue(ctx)
+	allOpts := append(slices.Clone(existingOpts), opts...)
+	return key.WithValue(ctx, allOpts)
+}
+
+func withOptionsMiddleware[T any](key *utils.ContextKey[[]T], opts ...T) Middleware {
+	if len(opts) == 0 {
+		return skip
+	}
+
+	return func(h Handler) Handler {
+		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+			req = req.WithContext(withOptions(req.Context(), key, opts...))
+			return h.Handle(client, req)
+		})
+	}
+}
+
 func compose(middlewares ...Middleware) Middleware {
 	return func(next Handler) Handler {
 		handler := next
