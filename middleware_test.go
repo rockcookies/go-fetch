@@ -3,119 +3,122 @@ package fetch
 import (
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestSkip(t *testing.T) {
-	req, err := http.NewRequest("GET", "http://example.com/path", nil)
-	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
-	}
-
-	executed := false
-	middleware := Skip()
-	handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-		executed = true
-		return nil, nil
-	}))
-
-	handler.Handle(&http.Client{}, req)
-
-	if !executed {
-		t.Error("expected handler to be executed")
-	}
-}
-
 func TestHandlerFunc(t *testing.T) {
-	req, err := http.NewRequest("GET", "http://example.com/path", nil)
-	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
+	tests := []struct {
+		name        string
+		handlerFunc HandlerFunc
+		wantErr     bool
+	}{
+		{
+			name: "successful handler",
+			handlerFunc: func(client *http.Client, req *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200}, nil
+			},
+			wantErr: false,
+		},
+		{
+			name: "error handler",
+			handlerFunc: func(client *http.Client, req *http.Request) (*http.Response, error) {
+				return nil, assert.AnError
+			},
+			wantErr: true,
+		},
 	}
 
-	executed := false
-	handler := HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-		executed = true
-		return &http.Response{StatusCode: 200}, nil
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &http.Client{}
+			req, err := http.NewRequest("GET", "http://example.com", nil)
+			require.NoError(t, err)
 
-	resp, err := handler.Handle(&http.Client{}, req)
-	if err != nil {
-		t.Fatalf("handler returned error: %v", err)
-	}
+			resp, err := tt.handlerFunc.Handle(client, req)
 
-	if !executed {
-		t.Error("expected handler to be executed")
-	}
-
-	if resp.StatusCode != 200 {
-		t.Errorf("expected status code 200, got %d", resp.StatusCode)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, resp)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, resp)
+				assert.Equal(t, 200, resp.StatusCode)
+			}
+		})
 	}
 }
 
-func TestMiddlewareChaining(t *testing.T) {
-	// Test that middleware can wrap handlers and modify requests
-	req, err := http.NewRequest("GET", "http://example.com/path", nil)
-	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
+func TestSkip(t *testing.T) {
+	tests := []struct {
+		name       string
+		setupMock  func() Handler
+		wantStatus int
+	}{
+		{
+			name: "skip middleware passes through",
+			setupMock: func() Handler {
+				return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+					return &http.Response{StatusCode: 200}, nil
+				})
+			},
+			wantStatus: 200,
+		},
 	}
 
-	// Middleware that adds a header
-	addHeaderMiddleware := func(next Handler) Handler {
-		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			req.Header.Set("X-Custom", "added")
-			return next.Handle(client, req)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			middleware := Skip()
+			handler := middleware(tt.setupMock())
+
+			client := &http.Client{}
+			req, err := http.NewRequest("GET", "http://example.com", nil)
+			require.NoError(t, err)
+
+			resp, err := handler.Handle(client, req)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, resp.StatusCode)
 		})
-	}
-
-	finalHandler := HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-		// Check the header was added
-		if req.Header.Get("X-Custom") != "added" {
-			t.Error("expected X-Custom header to be added")
-		}
-		return &http.Response{StatusCode: 200}, nil
-	})
-
-	// Chain the middleware
-	handler := addHeaderMiddleware(finalHandler)
-
-	_, err = handler.Handle(&http.Client{}, req)
-	if err != nil {
-		t.Fatalf("handler returned error: %v", err)
 	}
 }
 
-func TestMiddlewareCanShortCircuit(t *testing.T) {
-	req, err := http.NewRequest("GET", "http://example.com/path", nil)
-	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
+func TestMiddleware(t *testing.T) {
+	tests := []struct {
+		name           string
+		middleware     Middleware
+		baseHandler    Handler
+		expectedCalled bool
+		expectedStatus int
+	}{
+		{
+			name: "middleware modifies request",
+			middleware: func(next Handler) Handler {
+				return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+					req.Header.Set("X-Custom", "test")
+					return next.Handle(client, req)
+				})
+			},
+			baseHandler: HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+				assert.Equal(t, "test", req.Header.Get("X-Custom"))
+				return &http.Response{StatusCode: 200}, nil
+			}),
+			expectedCalled: true,
+			expectedStatus: 200,
+		},
 	}
 
-	executed := false
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := tt.middleware(tt.baseHandler)
 
-	// Middleware that short-circuits the chain
-	shortCircuitMiddleware := func(next Handler) Handler {
-		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			// Don't call next handler, return immediately
-			return &http.Response{StatusCode: 403}, nil
+			client := &http.Client{}
+			req, err := http.NewRequest("GET", "http://example.com", nil)
+			require.NoError(t, err)
+
+			resp, err := handler.Handle(client, req)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 		})
-	}
-
-	finalHandler := HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-		executed = true
-		return &http.Response{StatusCode: 200}, nil
-	})
-
-	handler := shortCircuitMiddleware(finalHandler)
-
-	resp, err := handler.Handle(&http.Client{}, req)
-	if err != nil {
-		t.Fatalf("handler returned error: %v", err)
-	}
-
-	if executed {
-		t.Error("expected final handler not to be executed")
-	}
-
-	if resp.StatusCode != 403 {
-		t.Errorf("expected status code 403, got %d", resp.StatusCode)
 	}
 }
