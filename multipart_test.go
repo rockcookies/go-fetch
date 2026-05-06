@@ -250,15 +250,9 @@ func TestCreateMultipartHeader(t *testing.T) {
 			assert.NotNil(t, header)
 
 			if tt.field.FileName != "" {
-				// Check if either "Name" or "name" exists (case-insensitive check)
-				found := false
-				for key := range header {
-					if strings.ToLower(key) == "name" || strings.ToLower(key) == "filename" {
-						found = true
-						break
-					}
-				}
-				assert.True(t, found, "Expected 'name' or 'filename' in header")
+				cd := header.Get("Content-Disposition")
+				assert.Contains(t, cd, `name="`, "Expected name param in Content-Disposition")
+				assert.Contains(t, cd, `filename="`, "Expected filename param in Content-Disposition")
 			}
 
 			if tt.contentType != "" {
