@@ -45,7 +45,7 @@ func buildResponse(req *http.Request, resp *http.Response, err error) *Response 
 // Returns an error if the response contains an error.
 func (r *Response) Read(p []byte) (n int, err error) {
 	if r.Error != nil {
-		return -1, r.Error
+		return 0, r.Error
 	}
 	return r.RawResponse.Body.Read(p)
 }
@@ -127,7 +127,6 @@ func (r *Response) Bytes() []byte {
 
 	r.populateResponseByteBuffer()
 
-	// Are we still empty?
 	if r.buffer.Len() == 0 {
 		return nil
 	}
@@ -149,24 +148,21 @@ func (r *Response) String() string {
 // Does nothing if an error is present.
 func (r *Response) ClearInternalBuffer() {
 	if r.Error != nil {
-		return // This is a noop as we will be dereferencing a null pointer
+		return
 	}
 	r.buffer.Reset()
 }
 
 func (r *Response) populateResponseByteBuffer() {
-	// Have I done this already?
 	if r.buffer.Len() != 0 {
 		return
 	}
 	defer r.Close()
 
-	// Is there any content?
 	if r.RawResponse.ContentLength == 0 {
 		return
 	}
 
-	// Did the server tell us how big the response is going to be?
 	if r.RawResponse.ContentLength > 0 {
 		r.buffer.Grow(int(r.RawResponse.ContentLength))
 	}
