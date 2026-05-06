@@ -8,11 +8,13 @@ import (
 	"time"
 )
 
+
+
 // Dispatcher manages HTTP client operations with middleware support.
 // It wraps an http.Client and applies middleware chains to requests.
 // All methods are safe for concurrent use.
 type Dispatcher struct {
-	lock        sync.Mutex
+	lock        sync.RWMutex
 	client      *http.Client
 	middlewares []Middleware
 }
@@ -49,6 +51,8 @@ func NewDispatcherWithTransport(transport http.RoundTripper, middlewares ...Midd
 
 // Client returns the underlying HTTP client.
 func (d *Dispatcher) Client() *http.Client {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
 	return d.client
 }
 
@@ -64,10 +68,10 @@ func (d *Dispatcher) SetClient(client *http.Client) {
 	defer d.lock.Unlock()
 
 	d.client = client
-}
-
-// Middlewares returns the current middleware chain.
+}// Middlewares returns the current middleware chain.
 func (d *Dispatcher) Middlewares() []Middleware {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
 	return d.middlewares
 }
 
@@ -83,23 +87,26 @@ func (d *Dispatcher) Use(middlewares ...Middleware) {
 // Clone creates a shallow copy of the Dispatcher.
 // The HTTP client is cloned, and middlewares are copied.
 func (d *Dispatcher) Clone() *Dispatcher {
-	return &Dispatcher{
-		client:      cloneClient(d.client),
-		middlewares: slices.Clone(d.middlewares),
-	}
+	d.lock.RLock()
+	client := cloneClient(d.client)
+	middlewares := slices.Clone(d.middlewares)
+	d.lock.RUnlock()
+	return &Dispatcher{client: client, middlewares: middlewares}
 }
 
 // Do executes the HTTP request with the dispatcher's middleware chain
 // plus any additional middlewares provided.
 func (d *Dispatcher) Do(req *http.Request, middlewares ...Middleware) (*http.Response, error) {
+	d.lock.RLock()
 	client := cloneClient(d.client)
+	all := slices.Concat(d.middlewares, middlewares)
+	d.lock.RUnlock()
 
 	var handler Handler = HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 		return client.Do(req)
 	})
 
-	middlewares = slices.Concat(d.middlewares, middlewares)
-	handler = compose(middlewares...)(handler)
+	handler = compose(all...)(handler)
 	return handler.Handle(client, req)
 }
 
