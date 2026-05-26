@@ -258,18 +258,102 @@ req2 := baseReq.Clone().Send("GET", "/posts")
 
 ### Request Dumping
 
-The `dump` package provides middleware for debugging:
+The `dump` package provides `DumpTransport`, an `http.RoundTripper` wrapper that captures HTTP exchanges and forwards them to a `DumpWriter`.
 
 ```go
-import "github.com/rockcookies/go-fetch/dump"
+import (
+    "log/slog"
+    "net/http"
+    "github.com/rockcookies/go-fetch/dump"
+)
 
-// Dump all requests and responses
-dispatcher.Use(dump.Middleware())
+// Attach DumpTransport to an http.Client
+client := &http.Client{
+    Transport: &dump.DumpTransport{
+        Next:    http.DefaultTransport,
+        Options: dump.DumpOptions{Parts: dump.DumpAll},
+        Writer:  &dump.SlogWriter{Logger: slog.Default()},
+    },
+}
+dispatcher := fetch.NewDispatcher(client)
+```
 
-// Dump with filters
-dispatcher.Use(dump.Middleware(
-    dump.WithFilter(dump.SkipResponseBody()),
-))
+**Filtering** — two hooks control whether an exchange is captured:
+
+```go
+transport := &dump.DumpTransport{
+    Next:    http.DefaultTransport,
+    Options: dump.DumpOptions{Parts: dump.DumpAll},
+    Writer:  &dump.SlogWriter{Logger: slog.Default()},
+
+    // Skip before sending (e.g. exclude health-check paths)
+    PreFilter: dump.NotFilter(dump.URLFilter("/healthz", "/readyz")),
+
+    // Capture only when response status >= 400
+    PostFilter: dump.AnyFilter(
+        dump.StatusFilter([2]int{400, 599}),
+        dump.ErrorFilter(),
+    ),
+}
+```
+
+Available filters: `URLFilter`, `MethodFilter`, `StatusFilter`, `HeaderFilter`, `ErrorFilter`, `AllFilters`, `AnyFilter`, `NotFilter`.
+
+**Log-level control** — `SlogWriter` uses a `SlogLevelFunc` to decide the level per entry.
+The built-in `DefaultLevelFunc` maps status codes automatically:
+
+| Condition | Level |
+|---|---|
+| `TransportError` or panic | ERROR |
+| status ≥ 500 | ERROR |
+| status == 429 | INFO |
+| status ≥ 400 | WARN |
+| method == "OPTIONS" | DEBUG |
+| otherwise | INFO |
+
+```go
+// Use the default level func (implicit when LevelFunc is nil)
+writer := &dump.SlogWriter{Logger: slog.Default()}
+
+// Or provide a custom one
+writer := &dump.SlogWriter{
+    Logger: slog.Default(),
+    LevelFunc: func(ctx context.Context, e dump.DumpEntry) slog.Level {
+        if e.Meta.Status >= 500 {
+            return slog.LevelError
+        }
+        return slog.LevelInfo
+    },
+}
+```
+
+**Async writing** — wrap any writer to offload I/O from the hot path:
+
+```go
+asyncWriter := dump.NewAsyncWriter(&dump.SlogWriter{Logger: slog.Default()}, 1024)
+defer asyncWriter.Close() // drain on shutdown
+
+transport := &dump.DumpTransport{
+    Next:   http.DefaultTransport,
+    Options: dump.DumpOptions{Parts: dump.DumpAll},
+    Writer: asyncWriter,
+}
+```
+
+**Redaction** — mask sensitive headers before they reach the writer:
+
+```go
+transport := &dump.DumpTransport{
+    Next:    http.DefaultTransport,
+    Options: dump.DumpOptions{Parts: dump.DumpAll},
+    Writer:  &dump.SlogWriter{Logger: slog.Default()},
+    Redactor: dump.DefaultRedactor{
+        Headers: map[string]struct{}{
+            "authorization": {},
+            "x-api-key":     {},
+        },
+    },
+}
 ```
 
 ### Error Handling
