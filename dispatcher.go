@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-
-
 // Dispatcher manages HTTP client operations with middleware support.
 // It wraps an http.Client and applies middleware chains to requests.
 // All methods are safe for concurrent use.
@@ -68,7 +66,9 @@ func (d *Dispatcher) SetClient(client *http.Client) {
 	defer d.lock.Unlock()
 
 	d.client = client
-}// Middlewares returns the current middleware chain.
+}
+
+// Middlewares returns the current middleware chain.
 func (d *Dispatcher) Middlewares() []Middleware {
 	d.lock.RLock()
 	defer d.lock.RUnlock()

@@ -99,11 +99,11 @@ func (r *Request) Send(method string, u string) *Response {
 		Header:     make(http.Header),
 	}
 
-	if parsedURL, err := url.Parse(u); err != nil {
+	parsedURL, err := url.Parse(u)
+	if err != nil {
 		return buildResponse(req, nil, err)
-	} else {
-		req.URL = parsedURL
 	}
+	req.URL = parsedURL
 
 	resp, err := r.Do(req)
 	return buildResponse(req, resp, err)

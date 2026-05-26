@@ -28,7 +28,7 @@ func buildResponse(req *http.Request, resp *http.Response, err error) *Response 
 		Cookies:     []*http.Cookie{},
 		RawRequest:  req,
 		RawResponse: resp,
-		buffer:      bytes.NewBuffer(nil),
+		buffer:      &bytes.Buffer{},
 	}
 
 	if err != nil {
