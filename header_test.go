@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPrepareHeaderMiddleware(t *testing.T) {
+func TestApplyHeaderMiddleware(t *testing.T) {
 	tests := []struct {
 		name            string
 		options         []func(*HeaderOptions)
@@ -78,7 +78,7 @@ func TestPrepareHeaderMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			middleware := PrepareHeaderMiddleware()
+			middleware := ApplyHeader()
 			handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 				for name, expectedValue := range tt.expectedHeaders {
 					actualValue := req.Header.Get(name)
@@ -156,7 +156,7 @@ func TestSetHeaderOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setHeaderMW := SetHeaderOptions(tt.options...)
-			prepareMW := PrepareHeaderMiddleware()
+			prepareMW := ApplyHeader()
 
 			// Compose middlewares: SetHeaderOptions -> PrepareHeaderMiddleware -> Handler
 			handler := setHeaderMW(prepareMW(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -195,7 +195,7 @@ func TestWithHeaderOptions(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context) {
 				assert.NotNil(t, ctx)
 				// Verify context contains header options
-				val, ok := prepareHeaderKey.GetValue(ctx)
+				val, ok := ctxHeaderKey.GetValue(ctx)
 				assert.True(t, ok)
 				assert.Len(t, val, 1)
 			},
@@ -224,7 +224,7 @@ func TestWithHeaderOptions(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, ctx context.Context) {
-				val, ok := prepareHeaderKey.GetValue(ctx)
+				val, ok := ctxHeaderKey.GetValue(ctx)
 				assert.True(t, ok)
 				assert.Len(t, val, 2)
 			},
@@ -241,7 +241,7 @@ func TestWithHeaderOptions(t *testing.T) {
 
 func TestHeaderOptions_Integration(t *testing.T) {
 	t.Run("headers from context", func(t *testing.T) {
-		middleware := PrepareHeaderMiddleware()
+		middleware := ApplyHeader()
 		handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 			assert.Equal(t, "ctx_value", req.Header.Get("X-Context-Header"))
 			return &http.Response{StatusCode: 200}, nil
@@ -262,7 +262,7 @@ func TestHeaderOptions_Integration(t *testing.T) {
 		setHeaderMW := SetHeaderOptions(func(opts *HeaderOptions) {
 			opts.Header.Set("X-Middleware-Header", "mw_value")
 		})
-		prepareMW := PrepareHeaderMiddleware()
+		prepareMW := ApplyHeader()
 
 		handler := setHeaderMW(prepareMW(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 			assert.Equal(t, "mw_value", req.Header.Get("X-Middleware-Header"))
@@ -276,7 +276,7 @@ func TestHeaderOptions_Integration(t *testing.T) {
 	})
 
 	t.Run("overwrite existing header", func(t *testing.T) {
-		middleware := PrepareHeaderMiddleware()
+		middleware := ApplyHeader()
 		handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 			assert.Equal(t, "new_value", req.Header.Get("X-Key"))
 			return &http.Response{StatusCode: 200}, nil

@@ -13,16 +13,16 @@ type HeaderOptions struct {
 	Header http.Header
 }
 
-var prepareHeaderKey = utils.NewContextKey[[]func(*HeaderOptions)]("prepare_header")
+var ctxHeaderKey = utils.NewContextKey[[]func(*HeaderOptions)]("fetch_header")
 
-// PrepareHeaderMiddleware creates a middleware that applies header options from the request context.
+// ApplyHeader creates a middleware that applies header options from the request context.
 // It retrieves header configuration functions stored in the context, executes them to build
 // the final HeaderOptions, and replaces the request headers with the configured values.
 // This middleware should be used in conjunction with SetHeaderOptions or WithHeaderOptions.
-func PrepareHeaderMiddleware() Middleware {
+func ApplyHeader() Middleware {
 	return func(h Handler) Handler {
 		return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-			options, _ := getOptions(&prepareHeaderKey, req, func() *HeaderOptions {
+			options, _ := getOptions(&ctxHeaderKey, req, func() *HeaderOptions {
 				return &HeaderOptions{
 					Header: req.Header,
 				}
@@ -60,9 +60,9 @@ func PrepareHeaderMiddleware() Middleware {
 //	    opts.Header.Set("Accept", "application/json")
 //	}))
 func SetHeaderOptions(opts ...func(*HeaderOptions)) Middleware {
-	return withOptionsMiddleware(&prepareHeaderKey, opts...)
+	return withOptionsMiddleware(&ctxHeaderKey, opts...)
 }
 
 func WithHeaderOptions(ctx context.Context, opts ...func(*HeaderOptions)) context.Context {
-	return withOptions(ctx, &prepareHeaderKey, opts...)
+	return withOptions(ctx, &ctxHeaderKey, opts...)
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPrepareCookieMiddleware(t *testing.T) {
+func TestApplyCookieMiddleware(t *testing.T) {
 	tests := []struct {
 		name            string
 		options         []func(*CookieOptions)
@@ -63,7 +63,7 @@ func TestPrepareCookieMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			middleware := PrepareCookieMiddleware()
+			middleware := ApplyCookie()
 			handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 				cookies := req.Cookies()
 				assert.Len(t, cookies, len(tt.expectedCookies))
@@ -134,7 +134,7 @@ func TestSetCookieOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setCookieMW := SetCookieOptions(tt.options...)
-			prepareMW := PrepareCookieMiddleware()
+			prepareMW := ApplyCookie()
 
 			// Compose middlewares: SetCookieOptions -> PrepareCookieMiddleware -> Handler
 			handler := setCookieMW(prepareMW(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -179,7 +179,7 @@ func TestWithCookieOptions(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context) {
 				assert.NotNil(t, ctx)
 				// Verify context contains cookie options
-				val, ok := prepareCookieKey.GetValue(ctx)
+				val, ok := ctxCookieKey.GetValue(ctx)
 				assert.True(t, ok)
 				assert.Len(t, val, 1)
 			},
@@ -208,7 +208,7 @@ func TestWithCookieOptions(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, ctx context.Context) {
-				val, ok := prepareCookieKey.GetValue(ctx)
+				val, ok := ctxCookieKey.GetValue(ctx)
 				assert.True(t, ok)
 				assert.Len(t, val, 2)
 			},
@@ -225,7 +225,7 @@ func TestWithCookieOptions(t *testing.T) {
 
 func TestCookieOptions_Integration(t *testing.T) {
 	t.Run("cookies from context", func(t *testing.T) {
-		middleware := PrepareCookieMiddleware()
+		middleware := ApplyCookie()
 		handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 			cookies := req.Cookies()
 			require.Len(t, cookies, 1)
@@ -249,7 +249,7 @@ func TestCookieOptions_Integration(t *testing.T) {
 		setCookieMW := SetCookieOptions(func(opts *CookieOptions) {
 			opts.Cookies = append(opts.Cookies, &http.Cookie{Name: "mw_cookie", Value: "mw_value"})
 		})
-		prepareMW := PrepareCookieMiddleware()
+		prepareMW := ApplyCookie()
 
 		handler := setCookieMW(prepareMW(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
 			cookies := req.Cookies()
