@@ -220,21 +220,25 @@ func Multipart(fields []*MultipartField, opts ...func(*MultipartOptions)) Middle
 
 			resp, respErr := handler.Handle(client, req)
 
-			// Always close the read end of the pipe, regardless of whether the
-			// request succeeded. This unblocks the writer goroutine if it is
-			// mid-write inside io.Copy and has no other way to observe
-			// cancellation (io.Pipe is not context-aware).
-			//
-			// pr.CloseWithError(nil) is equivalent to pr.Close(): subsequent
-			// writes on pw return io.ErrClosedPipe, which causes the goroutine
-			// to exit cleanly. When respErr is non-nil the error is propagated
-			// so the goroutine surfaces a meaningful reason for the failure.
-			pr.CloseWithError(respErr)
+			if respErr != nil {
+				// Handler failed: close the read end so the writer goroutine
+				// unblocks immediately and exits with the handler's error.
+				pr.CloseWithError(respErr)
+			} else {
+				// Handler succeeded but may not have consumed the request body
+				// (e.g. it handed off reading to a background goroutine, or it
+				// is a test double that never reads at all). Start a drain
+				// goroutine so the writer goroutine can finish and propagate any
+				// source-read errors through multipartErrChan rather than
+				// getting stuck on a blocking pipe write.
+				go io.Copy(io.Discard, pr)
+			}
 
 			if err := <-multipartErrChan; err != nil && respErr == nil {
 				respErr = err
 			}
 
+			pr.Close()
 			return resp, respErr
 		})
 	}
