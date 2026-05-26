@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"sort"
 	"strings"
 	"time"
 )
@@ -47,29 +48,62 @@ func escapeQuotes(s string) string {
 	return escapeQuotesReplacer.Replace(s)
 }
 
-func createMultipartHeader(mf *MultipartField, contentType string) textproto.MIMEHeader {
+// isValidMIMEToken reports whether s is a valid RFC 7230 token.
+func isValidMIMEToken(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c <= 0x20 || c >= 0x7F {
+			return false
+		}
+		switch c {
+		case '(', ')', '<', '>', '@', ',', ';', ':', '\\', '"', '/', '[', ']', '?', '=', '{', '}':
+			return false
+		}
+	}
+	return true
+}
+
+func createMultipartHeader(mf *MultipartField, contentType string) (textproto.MIMEHeader, error) {
+	if strings.ContainsAny(mf.Name, "\r\n") || strings.ContainsAny(mf.FileName, "\r\n") {
+		return nil, fmt.Errorf("fetch: Name or FileName contains invalid characters")
+	}
+
 	h := make(textproto.MIMEHeader)
 
-	cd := fmt.Sprintf(`form-data; name="%s"`, escapeQuotes(mf.Name))
+	var cd strings.Builder
+	fmt.Fprintf(&cd, `form-data; name="%s"`, escapeQuotes(mf.Name))
 	if mf.FileName != "" {
-		cd += fmt.Sprintf(`; filename="%s"`, escapeQuotes(mf.FileName))
+		fmt.Fprintf(&cd, `; filename="%s"`, escapeQuotes(mf.FileName))
 	}
-	for k, v := range mf.ExtraContentDisposition {
-		cd += fmt.Sprintf(`; %s="%s"`, k, escapeQuotes(v))
+	keys := make([]string, 0, len(mf.ExtraContentDisposition))
+	for k := range mf.ExtraContentDisposition {
+		keys = append(keys, k)
 	}
-	h.Set("Content-Disposition", cd)
+	sort.Strings(keys)
+	for _, k := range keys {
+		if !isValidMIMEToken(k) {
+			return nil, fmt.Errorf("fetch: invalid Content-Disposition parameter key %q", k)
+		}
+		fmt.Fprintf(&cd, `; %s="%s"`, k, escapeQuotes(mf.ExtraContentDisposition[k]))
+	}
+	h.Set("Content-Disposition", cd.String())
 
 	if contentType != "" {
 		h.Set("Content-Type", contentType)
 	}
 
-	return h
+	return h, nil
 }
 
 func createMultipart(w *multipart.Writer, mf *MultipartField) error {
 	if len(mf.Values) > 0 {
 		for _, v := range mf.Values {
-			w.WriteField(mf.Name, v)
+			if err := w.WriteField(mf.Name, v); err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -81,24 +115,27 @@ func createMultipart(w *multipart.Writer, mf *MultipartField) error {
 	}
 	defer content.Close()
 
-	lastTime := time.Now()
 	buf := make([]byte, 512)
-	seeEOF := false
+	var seeEOF bool
 	size, err := content.Read(buf)
 	if err != nil {
-		if errors.Is(err, io.EOF) {
-			seeEOF = true
-		} else {
+		if !errors.Is(err, io.EOF) {
 			return err
 		}
+		seeEOF = true
 	}
 
 	contentType := mf.ContentType
-	if contentType == "" {
+	if contentType == "" && size > 0 {
 		contentType = http.DetectContentType(buf[:size])
 	}
 
-	pw, err := w.CreatePart(createMultipartHeader(mf, contentType))
+	header, err := createMultipartHeader(mf, contentType)
+	if err != nil {
+		return err
+	}
+
+	pw, err := w.CreatePart(header)
 	if err != nil {
 		return err
 	}
@@ -112,7 +149,7 @@ func createMultipart(w *multipart.Writer, mf *MultipartField) error {
 
 		pw = &callbackWriter{
 			Writer:    pw,
-			lastTime:  lastTime,
+			lastTime:  time.Now(),
 			interval:  interval,
 			totalSize: mf.FileSize,
 			callback: func(written int64) {
@@ -151,7 +188,8 @@ func Multipart(fields []*MultipartField, opts ...func(*MultipartOptions)) Middle
 			}
 
 			pr, pw := io.Pipe()
-			req.GetBody = func() (io.ReadCloser, error) { return pr, nil }
+			req.Body = pr
+			req.GetBody = nil
 			w := multipart.NewWriter(pw)
 
 			if options.Boundary != "" {
@@ -167,7 +205,12 @@ func Multipart(fields []*MultipartField, opts ...func(*MultipartOptions)) Middle
 				defer pw.Close()
 				defer w.Close()
 
+				ctx := req.Context()
 				for _, mf := range fields {
+					if err := ctx.Err(); err != nil {
+						multipartErrChan <- err
+						return
+					}
 					if err := createMultipart(w, mf); err != nil {
 						multipartErrChan <- err
 						return
@@ -176,11 +219,20 @@ func Multipart(fields []*MultipartField, opts ...func(*MultipartOptions)) Middle
 			}()
 
 			resp, respErr := handler.Handle(client, req)
-			select {
-			case err := <-multipartErrChan:
-				respErr = errors.Join(respErr, err)
-			default:
-				// Channel already consumed or closed, nothing to do
+
+			// Always close the read end of the pipe, regardless of whether the
+			// request succeeded. This unblocks the writer goroutine if it is
+			// mid-write inside io.Copy and has no other way to observe
+			// cancellation (io.Pipe is not context-aware).
+			//
+			// pr.CloseWithError(nil) is equivalent to pr.Close(): subsequent
+			// writes on pw return io.ErrClosedPipe, which causes the goroutine
+			// to exit cleanly. When respErr is non-nil the error is propagated
+			// so the goroutine surfaces a meaningful reason for the failure.
+			pr.CloseWithError(respErr)
+
+			if err := <-multipartErrChan; err != nil && respErr == nil {
+				respErr = err
 			}
 
 			return resp, respErr

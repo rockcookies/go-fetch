@@ -45,7 +45,8 @@ func PrepareURLMiddleware() Middleware {
 				req.URL.Scheme = baseURL.Scheme
 				req.URL.Host = baseURL.Host
 
-				if baseURL.Path != "" && baseURL.Path != "/" {
+				hasNonRootPath := baseURL.Path != "" && baseURL.Path != "/"
+				if hasNonRootPath {
 					req.URL.Path = normalizePath(req.URL.Path)
 				}
 			}
