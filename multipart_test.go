@@ -409,9 +409,9 @@ func TestMultipartGoroutineErrorNotDropped(t *testing.T) {
 
 	middleware := Multipart([]*MultipartField{field})
 	handler := middleware(HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
-		// Drain the pipe in the background so the goroutine can write the first
-		// chunk and proceed to the failing second read.
-		go io.Copy(io.Discard, req.Body)
+		// Drain the body synchronously, mirroring what http.Client.Do guarantees:
+		// the request body is fully consumed before returning.
+		io.Copy(io.Discard, req.Body)
 		return &http.Response{
 			StatusCode: 200,
 			Body:       io.NopCloser(strings.NewReader("")),
