@@ -23,6 +23,7 @@ go get github.com/rockcookies/go-fetch
 package main
 
 import (
+    "context"
     "fmt"
     "github.com/rockcookies/go-fetch"
 )
@@ -32,7 +33,7 @@ func main() {
     dispatcher := fetch.NewDispatcher(nil)
 
     // Make a simple GET request
-    resp := dispatcher.NewRequest().Send("GET", "https://api.example.com/users")
+    resp := dispatcher.NewRequest().Get(context.Background(), "https://api.example.com/users")
     defer resp.Close()
 
     if resp.Error != nil {
@@ -65,14 +66,24 @@ dispatcher.Use(middleware1, middleware2)
 
 ### Request
 
-The `Request` type accumulates middleware before execution:
+The `Request` type accumulates request formatters and middleware before execution:
 
 ```go
+ctx := context.Background()
 req := dispatcher.NewRequest()
 req.Use(customMiddleware)
 req.JSON(map[string]string{"name": "John"})
-resp := req.Send("POST", "https://api.example.com/users")
+resp := req.Post(ctx, "https://api.example.com/users")
 ```
+
+Request formatters and middleware follow symmetric prepend/append APIs:
+
+| Middleware | Funcs |
+|------------|-------|
+| `Pre(...)` — prepend | `PreFuncs(...)` — prepend |
+| `Use(...)` — append | `UseFuncs(...)` — append |
+
+Formatters run in `Do` before middleware. All HTTP methods require `context.Context` as the first argument.
 
 ### Middleware
 
@@ -99,14 +110,14 @@ dispatcher.Use(authMiddleware)
 **JSON:**
 ```go
 data := map[string]string{"name": "John"}
-resp := req.JSON(data).Send("POST", url)
+resp := req.JSON(data).Post(context.Background(), url)
 defer resp.Close()
 ```
 
 **XML:**
 ```go
 data := User{Name: "John"}
-resp := req.XML(data).Send("POST", url)
+resp := req.XML(data).Post(context.Background(), url)
 defer resp.Close()
 ```
 
@@ -114,14 +125,14 @@ defer resp.Close()
 ```go
 form := url.Values{}
 form.Set("username", "john")
-resp := req.Form(form).Send("POST", url)
+resp := req.Form(form).Post(context.Background(), url)
 defer resp.Close()
 ```
 
 **Raw Body:**
 ```go
 reader := strings.NewReader("raw data")
-resp := req.Body(reader).Send("POST", url)
+resp := req.Body(reader).Post(context.Background(), url)
 defer resp.Close()
 ```
 
@@ -130,7 +141,7 @@ defer resp.Close()
 resp := req.BodyGet(func() (io.Reader, error) {
     // Body is only computed when needed
     return loadDataFromFile()
-}).Send("POST", url)
+}).Post(context.Background(), url)
 defer resp.Close()
 ```
 
@@ -141,18 +152,18 @@ fields := []*fetch.MultipartField{
     {Name: "file", FileName: "doc.txt", Content: fileReader},
     {Name: "description", Value: "My file"},
 }
-resp := req.Multipart(fields).Send("POST", url)
+resp := req.Multipart(fields).Post(context.Background(), url)
 defer resp.Close()
 ```
 
 ### URL Building
 
 ```go
-resp := req.Send("GET", "https://api.example.com/search?q=go")
+resp := req.Get(context.Background(), "https://api.example.com/search?q=go")
 defer resp.Close()
 
 // Or use helper
-resp := req.Send("GET", fetch.BuildURL("https://api.example.com/search",
+resp := req.Get(context.Background(), fetch.BuildURL("https://api.example.com/search",
     fetch.WithQuery("q", "go"),
     fetch.WithQuery("limit", "10"),
 ))
@@ -162,7 +173,7 @@ defer resp.Close()
 ### Response Handling
 
 ```go
-resp := req.Send("GET", url)
+resp := req.Get(context.Background(), url)
 defer resp.Close()  // Always defer Close() - safe even when Error is present
 
 // Check error first
@@ -188,9 +199,10 @@ body := resp.String()
 ### Custom Headers and Options
 
 ```go
-req.UseFuncs(func(r *http.Request) {
+req.UseFuncs(func(r *http.Request) *http.Request {
     r.Header.Set("User-Agent", "MyApp/1.0")
     r.Header.Set("Accept", "application/json")
+    return nil
 })
 ```
 
@@ -210,8 +222,8 @@ dispatcher.Use(fetch.SetHeaderOptions(func(opts *fetch.HeaderOptions) {
 ctx := fetch.WithHeaderOptions(context.Background(), func(opts *fetch.HeaderOptions) {
     opts.Header.Set("Authorization", "Bearer token123")
 })
-req.UseFuncs(func(r *http.Request) {
-    *r = *r.WithContext(ctx)
+req.PreFuncs(func(r *http.Request) *http.Request {
+    return r.WithContext(ctx)
 })
 ```
 
@@ -236,8 +248,8 @@ ctx := fetch.WithCookieOptions(context.Background(), func(opts *fetch.CookieOpti
         Value: "secret",
     })
 })
-req.UseFuncs(func(r *http.Request) {
-    *r = *r.WithContext(ctx)
+req.PreFuncs(func(r *http.Request) *http.Request {
+    return r.WithContext(ctx)
 })
 ```
 
@@ -246,14 +258,16 @@ req.UseFuncs(func(r *http.Request) {
 ### Cloning Requests
 
 ```go
+ctx := context.Background()
 baseReq := dispatcher.NewRequest()
-baseReq.UseFuncs(func(r *http.Request) {
+baseReq.PreFuncs(func(r *http.Request) *http.Request {
     r.Header.Set("Authorization", "Bearer token")
+    return nil
 })
 
 // Clone for different endpoints
-req1 := baseReq.Clone().Send("GET", "/users")
-req2 := baseReq.Clone().Send("GET", "/posts")
+req1 := baseReq.Clone().Get(ctx, "/users")
+req2 := baseReq.Clone().Get(ctx, "/posts")
 ```
 
 ### Request Dumping
@@ -361,7 +375,7 @@ transport := &dump.DumpTransport{
 All errors follow explicit handling patterns:
 
 ```go
-resp := req.Send("GET", url)
+resp := req.Get(context.Background(), url)
 defer resp.Close()  // Safe to defer immediately - handles all error cases
 
 if resp.Error != nil {
