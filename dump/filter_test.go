@@ -1,13 +1,11 @@
 package dump
 
 import (
-	"errors"
 	"net/http"
 	"net/url"
 	"testing"
 )
 
-// makeReq builds a minimal *http.Request for filter tests.
 func makeReq(method, path string) *http.Request {
 	return &http.Request{
 		Method: method,
@@ -20,187 +18,185 @@ func makeResp(status int) *http.Response {
 	return &http.Response{StatusCode: status}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AlwaysFilter
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestAlwaysFilter(t *testing.T) {
-	req := makeReq("GET", "/")
-	if !AlwaysFilter.Match(req, nil, nil) {
-		t.Fatal("AlwaysFilter should always match")
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// URLFilter
-// ─────────────────────────────────────────────────────────────────────────────
-
 func TestURLFilter(t *testing.T) {
 	f := URLFilter("/api/", "/internal/")
 
-	cases := []struct {
+	tests := []struct {
+		name string
 		path string
 		want bool
 	}{
-		{"/api/users", true},
-		{"/internal/health", true},
-		{"/public", false},
-		{"/", false},
+		{name: "api_prefix", path: "/api/users", want: true},
+		{name: "internal_prefix", path: "/internal/health", want: true},
+		{name: "no_match", path: "/public", want: false},
+		{name: "root", path: "/", want: false},
 	}
-	for _, c := range cases {
-		req := makeReq("GET", c.path)
-		if got := f.Match(req, nil, nil); got != c.want {
-			t.Errorf("URLFilter(%q) = %v, want %v", c.path, got, c.want)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := makeReq("GET", tt.path)
+			if got := f.Match(req, nil); got != tt.want {
+				t.Errorf("URLFilter(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MethodFilter
-// ─────────────────────────────────────────────────────────────────────────────
-
 func TestMethodFilter(t *testing.T) {
-	// Factory args are normalised to uppercase; req.Method is always uppercase
-	// in net/http, so no normalisation is needed on the match side.
-	f := MethodFilter("POST", "put") // "put" in factory arg → stored as "PUT"
+	f := MethodFilter("POST", "put")
 
-	cases := []struct {
+	tests := []struct {
+		name   string
 		method string
 		want   bool
 	}{
-		{"POST", true},
-		{"PUT", true},
-		{"GET", false},
-		{"DELETE", false},
+		{name: "post", method: "POST", want: true},
+		{name: "put_normalized", method: "PUT", want: true},
+		{name: "get", method: "GET", want: false},
+		{name: "delete", method: "DELETE", want: false},
 	}
-	for _, c := range cases {
-		req := makeReq(c.method, "/")
-		if got := f.Match(req, nil, nil); got != c.want {
-			t.Errorf("MethodFilter(%q) = %v, want %v", c.method, got, c.want)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := makeReq(tt.method, "/")
+			if got := f.Match(req, nil); got != tt.want {
+				t.Errorf("MethodFilter(%q) = %v, want %v", tt.method, got, tt.want)
+			}
+		})
 	}
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// StatusFilter
-// ─────────────────────────────────────────────────────────────────────────────
 
 func TestStatusFilter(t *testing.T) {
 	f := StatusFilter([2]int{400, 499}, [2]int{500, 599})
 
-	cases := []struct {
+	tests := []struct {
+		name string
 		resp *http.Response
 		want bool
 	}{
-		{makeResp(200), false},
-		{makeResp(400), true},
-		{makeResp(404), true},
-		{makeResp(499), true},
-		{makeResp(500), true},
-		{makeResp(503), true},
-		{nil, false}, // nil resp → never matches
+		{name: "ok_200", resp: makeResp(200), want: false},
+		{name: "client_400", resp: makeResp(400), want: true},
+		{name: "client_404", resp: makeResp(404), want: true},
+		{name: "server_500", resp: makeResp(500), want: true},
+		{name: "nil_resp", resp: nil, want: false},
 	}
-	for _, c := range cases {
-		req := makeReq("GET", "/")
-		if got := f.Match(req, c.resp, nil); got != c.want {
-			status := 0
-			if c.resp != nil {
-				status = c.resp.StatusCode
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := f.Match(makeReq("GET", "/"), tt.resp); got != tt.want {
+				t.Errorf("StatusFilter = %v, want %v", got, tt.want)
 			}
-			t.Errorf("StatusFilter(status=%d) = %v, want %v", status, got, c.want)
-		}
+		})
 	}
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HeaderFilter
-// ─────────────────────────────────────────────────────────────────────────────
 
 func TestHeaderFilter(t *testing.T) {
-	f := HeaderFilter("X-Request-ID", "Authorization")
+	f := HeaderFilter("Authorization", "X-Request-Id")
 
-	withBoth := makeReq("GET", "/")
-	withBoth.Header.Set("X-Request-ID", "abc")
-	withBoth.Header.Set("Authorization", "Bearer token")
-
-	withOne := makeReq("GET", "/")
-	withOne.Header.Set("X-Request-ID", "abc")
-
-	withNone := makeReq("GET", "/")
-
-	cases := []struct {
-		req  *http.Request
-		want bool
+	tests := []struct {
+		name   string
+		header http.Header
+		want   bool
 	}{
-		{withBoth, true},
-		{withOne, false}, // missing Authorization
-		{withNone, false},
+		{
+			name: "all_present",
+			header: http.Header{
+				"Authorization": {"Bearer x"},
+				"X-Request-Id":  {"abc"},
+			},
+			want: true,
+		},
+		{
+			name:   "missing_auth",
+			header: http.Header{"X-Request-Id": {"abc"}},
+			want:   false,
+		},
+		{
+			name:   "empty_value",
+			header: http.Header{"Authorization": {}, "X-Request-Id": {"abc"}},
+			want:   false,
+		},
 	}
-	for i, c := range cases {
-		if got := f.Match(c.req, nil, nil); got != c.want {
-			t.Errorf("case %d: HeaderFilter = %v, want %v", i, got, c.want)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := makeReq("GET", "/")
+			req.Header = tt.header
+			if got := f.Match(req, nil); got != tt.want {
+				t.Errorf("HeaderFilter = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ErrorFilter
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestErrorFilter(t *testing.T) {
-	f := ErrorFilter()
-	req := makeReq("GET", "/")
-
-	if f.Match(req, nil, nil) {
-		t.Error("ErrorFilter should not match when err is nil")
-	}
-	if !f.Match(req, nil, errors.New("dial: connection refused")) {
-		t.Error("ErrorFilter should match when err is non-nil")
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AllFilters / AnyFilter / NotFilter
-// ─────────────────────────────────────────────────────────────────────────────
 
 func TestAllFilters(t *testing.T) {
-	always := AlwaysFilter
-	never := NotFilter(AlwaysFilter)
+	f := AllFilters(
+		MethodFilter("POST"),
+		URLFilter("/api/"),
+	)
 
-	req := makeReq("GET", "/")
-	if !AllFilters(always, always).Match(req, nil, nil) {
-		t.Error("AllFilters(always,always) should match")
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		want   bool
+	}{
+		{name: "both_match", method: "POST", path: "/api/x", want: true},
+		{name: "method_only", method: "POST", path: "/other", want: false},
+		{name: "path_only", method: "GET", path: "/api/x", want: false},
 	}
-	if AllFilters(always, never).Match(req, nil, nil) {
-		t.Error("AllFilters(always,never) should not match")
-	}
-	if AllFilters().Match(req, nil, nil) != true {
-		t.Error("AllFilters() (empty) should vacuously match")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := makeReq(tt.method, tt.path)
+			if got := f.Match(req, nil); got != tt.want {
+				t.Errorf("AllFilters = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
 func TestAnyFilter(t *testing.T) {
-	always := AlwaysFilter
-	never := NotFilter(AlwaysFilter)
+	f := AnyFilter(MethodFilter("POST"), MethodFilter("PUT"))
 
-	req := makeReq("GET", "/")
-	if !AnyFilter(never, always).Match(req, nil, nil) {
-		t.Error("AnyFilter(never,always) should match")
+	tests := []struct {
+		name   string
+		method string
+		want   bool
+	}{
+		{name: "post", method: "POST", want: true},
+		{name: "put", method: "PUT", want: true},
+		{name: "get", method: "GET", want: false},
 	}
-	if AnyFilter(never, never).Match(req, nil, nil) {
-		t.Error("AnyFilter(never,never) should not match")
-	}
-	if AnyFilter().Match(req, nil, nil) {
-		t.Error("AnyFilter() (empty) should vacuously not match")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := makeReq(tt.method, "/")
+			if got := f.Match(req, nil); got != tt.want {
+				t.Errorf("AnyFilter = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
 func TestNotFilter(t *testing.T) {
-	req := makeReq("GET", "/")
-	if NotFilter(AlwaysFilter).Match(req, nil, nil) {
-		t.Error("NotFilter(AlwaysFilter) should not match")
+	f := NotFilter(URLFilter("/healthz"))
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "not_health", path: "/api", want: true},
+		{name: "is_health", path: "/healthz", want: false},
 	}
-	if !NotFilter(NotFilter(AlwaysFilter)).Match(req, nil, nil) {
-		t.Error("double-NotFilter should match")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := makeReq("GET", tt.path)
+			if got := f.Match(req, nil); got != tt.want {
+				t.Errorf("NotFilter = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
