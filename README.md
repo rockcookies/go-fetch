@@ -272,103 +272,96 @@ req2 := baseReq.Clone().Get(ctx, "/posts")
 
 ### Request Dumping
 
-The `dump` package provides `DumpTransport`, an `http.RoundTripper` wrapper that captures HTTP exchanges and forwards them to a `DumpWriter`.
+The `dump` package provides `dump.Transport`, an `http.RoundTripper` wrapper built with `dump.New` that captures HTTP exchanges and forwards them to a `DumpWriter`.
 
 ```go
 import (
     "log/slog"
     "net/http"
+
+    fetch "github.com/rockcookies/go-fetch"
     "github.com/rockcookies/go-fetch/dump"
 )
 
-// Attach DumpTransport to an http.Client
 client := &http.Client{
-    Transport: &dump.DumpTransport{
-        Next:    http.DefaultTransport,
-        Options: dump.DumpOptions{Parts: dump.DumpAll},
-        Writer:  &dump.SlogWriter{Logger: slog.Default()},
-    },
+    Transport: dump.New(
+        http.DefaultTransport,
+        dump.WithWriter(&dump.SlogWriter{
+            Logger: slog.Default(),
+            Level:  slog.LevelInfo,
+        }),
+        dump.WithOptions(dump.DumpOptions{
+            RequestHeaders:  true,
+            RequestBody:     true,
+            ResponseHeaders: true,
+            ResponseBody:    true,
+        }),
+    ),
 }
 dispatcher := fetch.NewDispatcher(client)
 ```
 
-**Filtering** — two hooks control whether an exchange is captured:
+**DumpOptions** — boolean flags select what is captured (metadata is always included):
+
+| Field | Description |
+|-------|-------------|
+| `RequestHeaders` / `RequestBody` | Request headers and body |
+| `ResponseHeaders` / `ResponseBody` | Response headers and body (tee capture; **must** read and `Close` `resp.Body` to flush the dump — omitting Close drops the entry) |
+| `BodyMaxBytes` | Cap per body; `0` → 64 KiB; `-1` → unlimited |
+| `SkipBinaryBody` | Skip body capture when Content-Type is not text-like |
+| `DumpOnError` | Emit a dump entry when RoundTrip returns an error (`Meta.Err` is set; `resp` is nil) |
+
+**Latency** — `Meta.Latency` is measured until the dump is written. With `ResponseBody` enabled, that includes reading through `Close` (not TTFB alone).
+
+**Streaming request bodies** — capture uses `req.GetBody` when present; if `GetBody` is nil (e.g. `io.Pipe` multipart upload), the body is not read and `Meta.ReqBodySkipped` is set.
+
+**Filtering** — `WithFilter` runs after a successful RoundTrip (status, URL, headers). Returning `false` skips the dump. Use `WithEntryFilter` for rules that need captured body bytes (JSON fields, sampling).
 
 ```go
-transport := &dump.DumpTransport{
-    Next:    http.DefaultTransport,
-    Options: dump.DumpOptions{Parts: dump.DumpAll},
-    Writer:  &dump.SlogWriter{Logger: slog.Default()},
-
-    // Skip before sending (e.g. exclude health-check paths)
-    PreFilter: dump.NotFilter(dump.URLFilter("/healthz", "/readyz")),
-
-    // Capture only when response status >= 400
-    PostFilter: dump.AnyFilter(
-        dump.StatusFilter([2]int{400, 599}),
-        dump.ErrorFilter(),
-    ),
-}
+dump.New(http.DefaultTransport,
+    dump.WithWriter(&dump.SlogWriter{Logger: slog.Default()}),
+    dump.WithOptions(dump.DumpOptions{
+        RequestHeaders: true,
+        ResponseHeaders: true,
+    }),
+    // Dump only 4xx/5xx responses
+    dump.WithFilter(dump.StatusFilter([2]int{400, 599})),
+)
 ```
 
-Available filters: `URLFilter`, `MethodFilter`, `StatusFilter`, `HeaderFilter`, `ErrorFilter`, `AllFilters`, `AnyFilter`, `NotFilter`.
+Available filters: `URLFilter`, `MethodFilter`, `StatusFilter`, `HeaderFilter`, `AllFilters`, `AnyFilter`, `NotFilter`.
 
-**Log-level control** — `SlogWriter` uses a `SlogLevelFunc` to decide the level per entry.
-The built-in `DefaultLevelFunc` maps status codes automatically:
+**Writers** — `SlogWriter` (structured slog; body attributes capped at 2 KiB for log volume), `IOWriter` (human-readable text), `MultiWriter` (fan-out), `NoopWriter` (discard). `DumpWriter.Write` runs on the RoundTrip goroutine — wrap with a buffered channel + background worker if the sink is slow (Elasticsearch, Kafka, etc.).
 
-| Condition | Level |
-|---|---|
-| `TransportError` or panic | ERROR |
-| status ≥ 500 | ERROR |
-| status == 429 | INFO |
-| status ≥ 400 | WARN |
-| method == "OPTIONS" | DEBUG |
-| otherwise | INFO |
+**Entry filter** — `WithEntryFilter(func(DumpEntry) bool)` runs after capture, before write. Return `false` to drop the entry (e.g. filter by `RespBody`, or sample with `rand`). Implement `DumpWriter` for other custom sinks.
+
+**Redaction** — request and response use separate `Redactor` instances (`WithRequestRedactor`, `WithResponseRedactor`). Sensitive values in the dump entry are replaced with `[REDACTED]`; live `req`/`resp` headers are not modified.
 
 ```go
-// Use the default level func (implicit when LevelFunc is nil)
-writer := &dump.SlogWriter{Logger: slog.Default()}
-
-// Or provide a custom one
-writer := &dump.SlogWriter{
-    Logger: slog.Default(),
-    LevelFunc: func(ctx context.Context, e dump.DumpEntry) slog.Level {
-        if e.Meta.Status >= 500 {
-            return slog.LevelError
-        }
-        return slog.LevelInfo
+reqRedact := dump.DefaultRedactor{
+    Headers: map[string]struct{}{
+        "authorization": {},
+        "x-api-key":     {},
+        "cookie":        {},
     },
 }
-```
-
-**Async writing** — wrap any writer to offload I/O from the hot path:
-
-```go
-asyncWriter := dump.NewAsyncWriter(&dump.SlogWriter{Logger: slog.Default()}, 1024)
-defer asyncWriter.Close() // drain on shutdown
-
-transport := &dump.DumpTransport{
-    Next:   http.DefaultTransport,
-    Options: dump.DumpOptions{Parts: dump.DumpAll},
-    Writer: asyncWriter,
-}
-```
-
-**Redaction** — mask sensitive headers before they reach the writer:
-
-```go
-transport := &dump.DumpTransport{
-    Next:    http.DefaultTransport,
-    Options: dump.DumpOptions{Parts: dump.DumpAll},
-    Writer:  &dump.SlogWriter{Logger: slog.Default()},
-    Redactor: dump.DefaultRedactor{
-        Headers: map[string]struct{}{
-            "authorization": {},
-            "x-api-key":     {},
-        },
+respRedact := dump.DefaultRedactor{
+    Headers: map[string]struct{}{
+        "set-cookie": {},
     },
 }
+
+dump.New(http.DefaultTransport,
+    dump.WithWriter(&dump.SlogWriter{Logger: slog.Default(), Level: slog.LevelInfo}),
+    dump.WithOptions(dump.DumpOptions{RequestHeaders: true, ResponseHeaders: true}),
+    dump.WithRequestRedactor(reqRedact),
+    dump.WithResponseRedactor(respRedact),
+)
 ```
+
+Header blocklist keys are lowercase. The same `DefaultRedactor` value may be passed to both options when the blocklist is identical.
+
+**Tracing IDs** — `WithMetaExtractor` pulls `TraceID` and `ReqID` from `req.Context()` into `DumpMeta`.
 
 ### Error Handling
 
