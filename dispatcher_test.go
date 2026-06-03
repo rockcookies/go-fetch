@@ -128,6 +128,101 @@ func TestDispatcher_SetClient(t *testing.T) {
 	}
 }
 
+func TestDispatcher_Pre(t *testing.T) {
+	dispatcher := NewDispatcher(nil)
+
+	preCalled := false
+	useCalled := false
+
+	dispatcher.
+		Use(func(next Handler) Handler {
+			return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+				useCalled = true
+				assert.True(t, preCalled, "Pre middleware should run before Use middleware")
+				req.Header.Set("X-Use", "use")
+				return next.Handle(client, req)
+			})
+		}).
+		Pre(func(next Handler) Handler {
+			return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+				preCalled = true
+				req.Header.Set("X-Pre", "pre")
+				return next.Handle(client, req)
+			})
+		})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "pre", r.Header.Get("X-Pre"))
+		assert.Equal(t, "use", r.Header.Get("X-Use"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequest("GET", server.URL, nil)
+	require.NoError(t, err)
+
+	resp, err := dispatcher.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.True(t, preCalled)
+	assert.True(t, useCalled)
+}
+
+func TestDispatcher_Pre_MiddlewareCount(t *testing.T) {
+	tests := []struct {
+		name          string
+		initialMws    []Middleware
+		prependMws    []Middleware
+		expectedCount int
+	}{
+		{
+			name:       "prepend single middleware",
+			initialMws: nil,
+			prependMws: []Middleware{
+				func(next Handler) Handler {
+					return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+						return next.Handle(client, req)
+					})
+				},
+			},
+			expectedCount: 1,
+		},
+		{
+			name: "prepend multiple middlewares",
+			initialMws: []Middleware{
+				func(next Handler) Handler {
+					return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+						return next.Handle(client, req)
+					})
+				},
+			},
+			prependMws: []Middleware{
+				func(next Handler) Handler {
+					return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+						return next.Handle(client, req)
+					})
+				},
+				func(next Handler) Handler {
+					return HandlerFunc(func(client *http.Client, req *http.Request) (*http.Response, error) {
+						return next.Handle(client, req)
+					})
+				},
+			},
+			expectedCount: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dispatcher := NewDispatcher(nil, tt.initialMws...)
+			dispatcher.Pre(tt.prependMws...)
+
+			assert.Equal(t, tt.expectedCount, len(dispatcher.Middlewares()))
+		})
+	}
+}
+
 func TestDispatcher_Use(t *testing.T) {
 	tests := []struct {
 		name          string
