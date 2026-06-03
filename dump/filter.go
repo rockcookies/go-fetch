@@ -5,33 +5,20 @@ import (
 	"strings"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Filter
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Filter decides whether a given exchange should be dumped.
-//
-// PreFilter: resp and err are always nil.
-// PostFilter: resp is nil when a transport error occurred.
+// Filter decides whether a given request/response pair should be dumped.
+// Returning false skips all dumping for that call.
 type Filter interface {
-	Match(req *http.Request, resp *http.Response, err error) bool
+	Match(req *http.Request, resp *http.Response) bool
 }
 
-// FilterFunc adapts a plain function to Filter.
-type FilterFunc func(req *http.Request, resp *http.Response, err error) bool
+// FilterFunc adapts a plain function to the Filter interface.
+type FilterFunc func(req *http.Request, resp *http.Response) bool
 
-func (f FilterFunc) Match(req *http.Request, resp *http.Response, err error) bool {
-	return f(req, resp, err)
-}
+func (f FilterFunc) Match(req *http.Request, resp *http.Response) bool { return f(req, resp) }
 
-// AlwaysFilter matches every exchange (used as the default when no filter is set).
-var AlwaysFilter Filter = FilterFunc(func(*http.Request, *http.Response, error) bool {
-	return true
-})
-
-// URLFilter matches when the request path starts with any of the given prefixes.
+// URLFilter matches if the request URL path has any of the given prefixes.
 func URLFilter(prefixes ...string) Filter {
-	return FilterFunc(func(req *http.Request, _ *http.Response, _ error) bool {
+	return FilterFunc(func(req *http.Request, _ *http.Response) bool {
 		for _, p := range prefixes {
 			if strings.HasPrefix(req.URL.Path, p) {
 				return true
@@ -47,16 +34,16 @@ func MethodFilter(methods ...string) Filter {
 	for _, m := range methods {
 		set[strings.ToUpper(m)] = struct{}{}
 	}
-	return FilterFunc(func(req *http.Request, _ *http.Response, _ error) bool {
+	return FilterFunc(func(req *http.Request, _ *http.Response) bool {
 		_, ok := set[req.Method]
 		return ok
 	})
 }
 
-// StatusFilter matches responses whose status code falls within any [lo, hi] range.
-// Never matches when resp is nil (transport error / pre-filter).
+// StatusFilter matches responses whose status code falls in any [lo, hi] range.
+// If resp is nil (network error), no range matches.
 func StatusFilter(ranges ...[2]int) Filter {
-	return FilterFunc(func(_ *http.Request, resp *http.Response, _ error) bool {
+	return FilterFunc(func(_ *http.Request, resp *http.Response) bool {
 		if resp == nil {
 			return false
 		}
@@ -69,9 +56,9 @@ func StatusFilter(ranges ...[2]int) Filter {
 	})
 }
 
-// HeaderFilter matches when the request contains all specified header keys.
+// HeaderFilter matches if the request contains all specified header keys (non-empty value).
 func HeaderFilter(keys ...string) Filter {
-	return FilterFunc(func(req *http.Request, _ *http.Response, _ error) bool {
+	return FilterFunc(func(req *http.Request, _ *http.Response) bool {
 		for _, k := range keys {
 			if req.Header.Get(k) == "" {
 				return false
@@ -81,18 +68,11 @@ func HeaderFilter(keys ...string) Filter {
 	})
 }
 
-// ErrorFilter matches when a transport-level error occurred.
-func ErrorFilter() Filter {
-	return FilterFunc(func(_ *http.Request, _ *http.Response, err error) bool {
-		return err != nil
-	})
-}
-
-// AllFilters requires ALL filters to match (AND).
+// AllFilters requires ALL filters to match (AND composition).
 func AllFilters(filters ...Filter) Filter {
-	return FilterFunc(func(req *http.Request, resp *http.Response, err error) bool {
+	return FilterFunc(func(req *http.Request, resp *http.Response) bool {
 		for _, f := range filters {
-			if !f.Match(req, resp, err) {
+			if !f.Match(req, resp) {
 				return false
 			}
 		}
@@ -100,11 +80,11 @@ func AllFilters(filters ...Filter) Filter {
 	})
 }
 
-// AnyFilter requires at least one filter to match (OR).
+// AnyFilter requires at least one filter to match (OR composition).
 func AnyFilter(filters ...Filter) Filter {
-	return FilterFunc(func(req *http.Request, resp *http.Response, err error) bool {
+	return FilterFunc(func(req *http.Request, resp *http.Response) bool {
 		for _, f := range filters {
-			if f.Match(req, resp, err) {
+			if f.Match(req, resp) {
 				return true
 			}
 		}
@@ -114,7 +94,10 @@ func AnyFilter(filters ...Filter) Filter {
 
 // NotFilter negates a filter.
 func NotFilter(f Filter) Filter {
-	return FilterFunc(func(req *http.Request, resp *http.Response, err error) bool {
-		return !f.Match(req, resp, err)
+	return FilterFunc(func(req *http.Request, resp *http.Response) bool {
+		return !f.Match(req, resp)
 	})
 }
+
+// alwaysFilter is the default filter: dump everything.
+var alwaysFilter Filter = FilterFunc(func(_ *http.Request, _ *http.Response) bool { return true })

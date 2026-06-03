@@ -1,253 +1,195 @@
 package dump
 
 import (
+	"context"
 	"net/http"
-	"runtime/debug"
 	"time"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DumpTransport
-// ─────────────────────────────────────────────────────────────────────────────
-
-// DumpTransport wraps an http.RoundTripper and dumps selected HTTP exchanges.
-//
-// It is safe for concurrent use.  All fields must be set before the first call
-// to RoundTrip; mutating them afterwards is a data race.
-//
-// Example:
+// Transport is an http.RoundTripper that dumps selected HTTP exchanges.
+// Wrap an existing transport (or http.DefaultTransport) and assign it to
+// http.Client.Transport.
 //
 //	client := &http.Client{
-//	    Transport: &DumpTransport{
-//	        Next:    http.DefaultTransport,
-//	        Options: DumpOptions{Parts: DumpAll},
-//	        Writer:  &SlogWriter{Logger: slog.Default()},
-//	    },
+//	    Transport: dump.New(http.DefaultTransport, opts...),
 //	}
-type DumpTransport struct {
-	// Next is the underlying RoundTripper.  Nil → http.DefaultTransport.
-	Next http.RoundTripper
-
-	// PreFilter is evaluated before the request is sent.
-	// resp and err are always nil at this point.
-	// Nil → always pass.
-	PreFilter Filter
-
-	// PostFilter is evaluated after the response arrives (or an error occurs).
-	// Nil → always pass.
-	PostFilter Filter
-
-	Options DumpOptions
-
-	// Writer receives the completed DumpEntry.  Nil → no-op.
-	Writer DumpWriter
-
-	// Redactor masks sensitive data.  Nil → NoopRedactor.
-	Redactor Redactor
-
-	// MetaExtractor pulls tracing IDs from the request context.  Nil → skipped.
-	MetaExtractor MetaExtractor
+type Transport struct {
+	next             http.RoundTripper
+	filter           Filter
+	entryFilter      func(DumpEntry) bool
+	options          DumpOptions
+	writer           DumpWriter
+	requestRedactor  Redactor
+	responseRedactor Redactor
+	extract          MetaExtractor
 }
 
-var _ http.RoundTripper = (*DumpTransport)(nil)
+// Option configures a Transport.
+type Option func(*Transport)
 
-func (t *DumpTransport) roundTripper() http.RoundTripper {
-	if t.Next != nil {
-		return t.Next
+// WithFilter sets the filter that decides whether to dump each exchange.
+// Default: dump everything.
+func WithFilter(f Filter) Option { return func(t *Transport) { t.filter = f } }
+
+// WithEntryFilter runs after capture, immediately before Write.
+// Return false to skip that dump. nil writes all entries.
+func WithEntryFilter(fn func(DumpEntry) bool) Option {
+	return func(t *Transport) { t.entryFilter = fn }
+}
+
+// WithOptions sets the dump options.
+func WithOptions(o DumpOptions) Option { return func(t *Transport) { t.options = o } }
+
+// WithWriter sets the output sink.
+func WithWriter(w DumpWriter) Option { return func(t *Transport) { t.writer = w } }
+
+// WithRequestRedactor sets the redactor applied to captured request headers and body.
+func WithRequestRedactor(r Redactor) Option {
+	return func(t *Transport) { t.requestRedactor = r }
+}
+
+// WithResponseRedactor sets the redactor applied to captured response headers and body.
+func WithResponseRedactor(r Redactor) Option {
+	return func(t *Transport) { t.responseRedactor = r }
+}
+
+// WithMetaExtractor sets a function that extracts tracing IDs from the context.
+func WithMetaExtractor(fn MetaExtractor) Option { return func(t *Transport) { t.extract = fn } }
+
+// New wraps next with dump middleware. If next is nil, http.DefaultTransport is used.
+func New(next http.RoundTripper, opts ...Option) *Transport {
+	if next == nil {
+		next = http.DefaultTransport
 	}
-	return http.DefaultTransport
+	t := &Transport{
+		next:   next,
+		filter: alwaysFilter,
+		writer: NoopWriter{},
+	}
+	for _, o := range opts {
+		o(t)
+	}
+	return t
 }
 
-func (t *DumpTransport) redactor() Redactor {
-	if t.Redactor != nil {
-		return t.Redactor
+func (t *Transport) requestRedact() Redactor {
+	if t.requestRedactor != nil {
+		return t.requestRedactor
 	}
 	return NoopRedactor{}
 }
 
-func (t *DumpTransport) preFilter() Filter {
-	if t.PreFilter != nil {
-		return t.PreFilter
+func (t *Transport) responseRedact() Redactor {
+	if t.responseRedactor != nil {
+		return t.responseRedactor
 	}
-	return AlwaysFilter
+	return NoopRedactor{}
 }
 
-func (t *DumpTransport) postFilter() Filter {
-	if t.PostFilter != nil {
-		return t.PostFilter
+func (t *Transport) writeEntry(ctx context.Context, e DumpEntry) {
+	defer func() { recover() }()
+	if t.entryFilter != nil && !t.entryFilter(e) {
+		return
 	}
-	return AlwaysFilter
+	_ = t.writer.Write(ctx, e)
 }
 
 // RoundTrip implements http.RoundTripper.
-func (t *DumpTransport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	start := time.Now()
+	ctx := req.Context()
 
-	// ── pre-filter: decide early without reading body ─────────────────────
-	dumpThis := t.preFilter().Match(req, nil, nil)
-
-	// ── capture request body (only when pre-filter passed) ────────────────
 	var reqBody []byte
 	var reqTruncated bool
-	if dumpThis && req.Body != nil && req.Body != http.NoBody {
-		reqBody, reqTruncated = captureRequestBody(req, bodyMaxBytes(t.Options), t.Options.SkipBinaryBody)
+	var reqBodySkipped bool
+	if t.options.RequestBody && req.Body != nil && req.Body != http.NoBody {
+		reqBody, reqTruncated, reqBodySkipped = captureRequestBody(
+			req,
+			t.options.maxBytes(),
+			t.options.SkipBinaryBody,
+			req.Header.Get("Content-Type"),
+		)
 	}
 
-	// ── call inner transport; recover panics in an isolated closure ────────
-	//
-	// The closure boundary is intentional: recover() only catches panics from
-	// the same goroutine and only when called directly inside a deferred
-	// function.  Placing RoundTrip inside the closure means the outer stack
-	// frame is clean when we re-panic, and debug.Stack() captures only the
-	// inner transport's frames.
-	var panicInfo *PanicInfo
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				panicInfo = &PanicInfo{Value: r, Stack: debug.Stack()}
-			}
-		}()
-		resp, err = t.roundTripper().RoundTrip(req)
-	}()
+	resp, err := t.next.RoundTrip(req)
 
-	latency := time.Since(start)
-
-	// ── panic path: dump then re-panic ────────────────────────────────────
-	if panicInfo != nil {
-		if dumpThis {
-			t.flushEntry(dumpArgs{
-				req:          req,
-				reqBody:      reqBody,
-				reqTruncated: reqTruncated,
-				latency:      latency,
-				panicInfo:    panicInfo,
-			})
-		}
-		panic(panicInfo.Value) // re-panic with original value; stack is clean
-	}
-
-	// ── transport error path ──────────────────────────────────────────────
 	if err != nil {
-		if dumpThis && t.postFilter().Match(req, nil, err) {
-			t.flushEntry(dumpArgs{
-				req:          req,
-				transportErr: err,
-				reqBody:      reqBody,
-				reqTruncated: reqTruncated,
-				latency:      latency,
-			})
+		if t.options.DumpOnError {
+			entry := t.buildEntry(req, nil, reqBody, nil, reqTruncated, false, reqBodySkipped, time.Since(start), err)
+			t.writeEntry(ctx, entry)
 		}
-		// Preserve resp per http.RoundTripper contract: a non-nil resp alongside
-		// a non-nil err can occur (e.g. after a redirect failure).
-		return resp, err
+		return nil, err
 	}
 
-	// ── post-filter ───────────────────────────────────────────────────────
-	if !dumpThis || !t.postFilter().Match(req, resp, nil) {
+	f := t.filter
+	if f == nil {
+		f = alwaysFilter
+	}
+	if !f.Match(req, resp) {
 		return resp, nil
 	}
 
-	// ── streaming response body capture ───────────────────────────────────
-	//
-	// We tee-read rather than buffer upfront so the caller's Read calls
-	// proceed normally.  flushEntry is triggered when the caller closes the
-	// body, at which point we have the complete captured slice.
-	if t.Options.Parts&DumpResponseBody != 0 && resp.Body != nil {
-		resp.Body = newCaptureReadCloser(
+	if resp.Body != nil && resp.Body != http.NoBody && t.options.ResponseBody {
+		resp.Body = newTeeBody(
 			resp.Body,
-			bodyMaxBytes(t.Options),
-			t.Options.SkipBinaryBody,
+			t.options.maxBytes(),
+			t.options.SkipBinaryBody,
 			resp.Header.Get("Content-Type"),
-			func(body []byte, bodyTruncated bool) {
-				t.flushEntry(dumpArgs{
-					req:           req,
-					resp:          resp,
-					reqBody:       reqBody,
-					respBody:      body,
-					reqTruncated:  reqTruncated,
-					respTruncated: bodyTruncated,
-					latency:       latency,
-				})
+			func(captured []byte, truncated bool) {
+				entry := t.buildEntry(req, resp, reqBody, captured, reqTruncated, truncated, reqBodySkipped, time.Since(start), nil)
+				t.writeEntry(ctx, entry)
 			},
 		)
 		return resp, nil
 	}
 
-	// ── no response-body capture: write immediately ────────────────────────
-	t.flushEntry(dumpArgs{
-		req:          req,
-		resp:         resp,
-		reqBody:      reqBody,
-		reqTruncated: reqTruncated,
-		latency:      latency,
-	})
+	entry := t.buildEntry(req, resp, reqBody, nil, reqTruncated, false, reqBodySkipped, time.Since(start), nil)
+	t.writeEntry(ctx, entry)
 	return resp, nil
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// flushEntry (internal)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// dumpArgs groups all parameters for a single dump flush, avoiding a long
-// argument list and keeping call sites readable.
-type dumpArgs struct {
-	req           *http.Request
-	resp          *http.Response
-	transportErr  error
-	reqBody       []byte
-	respBody      []byte
-	reqTruncated  bool
-	respTruncated bool
-	latency       time.Duration
-	panicInfo     *PanicInfo
-}
-
-func (t *DumpTransport) flushEntry(a dumpArgs) {
-	if t.Writer == nil {
-		return
+func (t *Transport) buildEntry(
+	req *http.Request,
+	resp *http.Response,
+	reqBody, respBody []byte,
+	reqTruncated, respTruncated bool,
+	reqBodySkipped bool,
+	latency time.Duration,
+	err error,
+) DumpEntry {
+	meta := DumpMeta{
+		Method:            req.Method,
+		URL:               req.URL.String(),
+		Latency:           latency,
+		ReqBodyTruncated:  reqTruncated,
+		RespBodyTruncated: respTruncated,
+		ReqBodySkipped:    reqBodySkipped,
+		ReqContentType:    req.Header.Get("Content-Type"),
+		Err:               err,
+	}
+	if resp != nil {
+		meta.Status = resp.StatusCode
+		meta.RespContentType = resp.Header.Get("Content-Type")
+	}
+	if t.extract != nil {
+		meta.TraceID, meta.ReqID = t.extract(req.Context())
 	}
 
-	redact := t.redactor()
+	reqRedact := t.requestRedact()
+	respRedact := t.responseRedact()
 
-	entry := DumpEntry{
-		Meta: DumpMeta{
-			Method:            a.req.Method,
-			URL:               a.req.URL.String(),
-			Status:            responseStatus(a.resp),
-			Latency:           a.latency,
-			TransportError:    a.transportErr,
-			ReqBodyTruncated:  a.reqTruncated,
-			RespBodyTruncated: a.respTruncated,
-			ReqContentType:    a.req.Header.Get("Content-Type"),
-			PanicInfo:         a.panicInfo,
-		},
+	entry := DumpEntry{Meta: meta}
+	if t.options.RequestHeaders {
+		entry.ReqHeaders = reqRedact.RedactHeaders(req.Header)
 	}
-	if a.resp != nil {
-		entry.Meta.RespContentType = a.resp.Header.Get("Content-Type")
+	if t.options.RequestBody {
+		entry.ReqBody = reqRedact.RedactBody(meta.ReqContentType, reqBody)
 	}
-	if t.MetaExtractor != nil {
-		entry.Meta.TraceID, entry.Meta.ReqID = t.MetaExtractor(a.req.Context())
+	if t.options.ResponseHeaders && resp != nil {
+		entry.RespHeaders = respRedact.RedactHeaders(resp.Header)
 	}
-	if t.Options.Parts&DumpRequestHeaders != 0 {
-		entry.ReqHeaders = redact.RedactHeaders(a.req.Header)
+	if t.options.ResponseBody {
+		entry.RespBody = respRedact.RedactBody(meta.RespContentType, respBody)
 	}
-	if t.Options.Parts&DumpResponseHeaders != 0 && a.resp != nil {
-		entry.RespHeaders = redact.RedactHeaders(a.resp.Header)
-	}
-	if t.Options.Parts&DumpRequestBody != 0 {
-		entry.ReqBody = redact.RedactBody(entry.Meta.ReqContentType, a.reqBody)
-	}
-	if t.Options.Parts&DumpResponseBody != 0 {
-		entry.RespBody = redact.RedactBody(entry.Meta.RespContentType, a.respBody)
-	}
-
-	// Writer errors are intentionally swallowed to avoid masking transport errors.
-	_ = t.Writer.Write(a.req.Context(), entry)
-}
-
-func responseStatus(resp *http.Response) int {
-	if resp == nil {
-		return 0
-	}
-	return resp.StatusCode
+	return entry
 }

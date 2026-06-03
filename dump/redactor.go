@@ -5,10 +5,6 @@ import (
 	"strings"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Redactor
-// ─────────────────────────────────────────────────────────────────────────────
-
 // Redactor masks sensitive data before a DumpEntry is handed to the writer.
 type Redactor interface {
 	RedactHeaders(h http.Header) http.Header
@@ -22,7 +18,7 @@ func (NoopRedactor) RedactHeaders(h http.Header) http.Header { return h }
 func (NoopRedactor) RedactBody(_ string, b []byte) []byte    { return b }
 
 // DefaultRedactor replaces the value of nominated header keys with "[REDACTED]".
-// Keys are matched case-insensitively.
+// Keys in Headers are matched case-insensitively (use lowercase keys).
 //
 //	r := DefaultRedactor{
 //	    Headers: map[string]struct{}{

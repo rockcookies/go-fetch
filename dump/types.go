@@ -6,100 +6,75 @@ import (
 	"time"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DumpPart bitmask
-// ─────────────────────────────────────────────────────────────────────────────
-
-// DumpPart is a bitmask that selects which parts of an exchange to capture.
-type DumpPart uint8
-
-const (
-	DumpRequestHeaders  DumpPart = 1 << iota // capture request headers
-	DumpRequestBody                          // capture request body
-	DumpResponseHeaders                      // capture response headers
-	DumpResponseBody                         // capture response body (streaming)
-
-	// DumpAll captures everything.
-	DumpAll DumpPart = DumpRequestHeaders | DumpRequestBody | DumpResponseHeaders | DumpResponseBody
-)
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DumpOptions
-// ─────────────────────────────────────────────────────────────────────────────
-
 // DumpOptions controls which parts of the exchange are captured.
+// Metadata (method, URL, status, latency) is always populated regardless of
+// these flags; the flags only control what is forwarded to the DumpWriter.
 type DumpOptions struct {
-	// Parts is a bitmask of DumpPart values.
-	Parts DumpPart
+	RequestHeaders  bool
+	RequestBody     bool
+	ResponseHeaders bool
+	ResponseBody    bool
 
-	// BodyMaxBytes caps bytes captured from each body (request or response).
-	// 0 → DefaultBodyMaxBytes.  Use a negative value for unlimited.
+	// BodyMaxBytes caps how many bytes are read from each body for dumping.
+	// 0 = use DefaultBodyMaxBytes. -1 = unlimited (use with care on large payloads).
 	BodyMaxBytes int64
 
-	// SkipBinaryBody skips body capture when Content-Type is not text-like.
+	// SkipBinaryBody suppresses capture when Content-Type is not text-like.
+	// The body is still forwarded intact to the caller.
 	SkipBinaryBody bool
+
+	// DumpOnError forces a dump entry even when RoundTrip returns an error
+	// (e.g. connection refused, timeout). resp will be nil in that case.
+	DumpOnError bool
 }
 
+// DefaultBodyMaxBytes is the cap applied when BodyMaxBytes == 0.
 const DefaultBodyMaxBytes = 64 * 1024 // 64 KiB
 
-// bodyMaxBytes returns the effective body cap from options.
-// 0 → DefaultBodyMaxBytes; negative → unlimited (-1).
-func bodyMaxBytes(o DumpOptions) int64 {
+func (o *DumpOptions) maxBytes() int64 {
 	if o.BodyMaxBytes == 0 {
 		return DefaultBodyMaxBytes
 	}
 	return o.BodyMaxBytes
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Metadata types
-// ─────────────────────────────────────────────────────────────────────────────
-
-// PanicInfo captures the value and stack trace of a recovered panic.
-type PanicInfo struct {
-	Value any
-	Stack []byte // output of runtime/debug.Stack()
-}
-
-// DumpMeta carries per-exchange metadata included in every DumpEntry.
+// DumpMeta carries per-exchange metadata passed to the DumpWriter.
 type DumpMeta struct {
-	Method  string
-	URL     string
-	Status  int           // 0 when no response (transport error or panic)
-	Latency time.Duration // time from first byte sent to response headers received
-
-	// Populated by MetaExtractor when set.
+	// TraceID / ReqID are extracted from the context via MetaExtractor.
 	TraceID string
 	ReqID   string
+
+	Method  string
+	URL     string
+	Status  int // 0 when resp is nil (error / panic)
+	// Latency is time from RoundTrip start until the dump is written.
+	// With ResponseBody enabled, that is after resp.Body is closed (includes body read).
+	Latency time.Duration
+
+	// Whether the body was capped at BodyMaxBytes.
+	ReqBodyTruncated  bool
+	RespBodyTruncated bool
+
+	// ReqBodySkipped is true when RequestBody capture was requested but skipped
+	// because req.GetBody is nil (streaming body, e.g. io.Pipe multipart upload).
+	ReqBodySkipped bool
 
 	ReqContentType  string
 	RespContentType string
 
-	ReqBodyTruncated  bool
-	RespBodyTruncated bool
-
-	// TransportError is set when the inner RoundTripper returns a non-nil error.
-	TransportError error
-
-	// PanicInfo is set when the inner RoundTripper panics.
-	PanicInfo *PanicInfo
+	// Err holds the RoundTrip error, if any. Non-nil only when DumpOnError is set.
+	Err error
 }
 
-// MetaExtractor pulls tracing IDs out of the request context.
-// Implement this to integrate with your observability stack.
+// MetaExtractor pulls trace / request IDs from the context.
+// Implement to integrate with your tracing infrastructure.
 type MetaExtractor func(ctx context.Context) (traceID, reqID string)
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DumpEntry
-// ─────────────────────────────────────────────────────────────────────────────
-
-// DumpEntry is the complete record handed to a DumpWriter for one HTTP exchange.
+// DumpEntry is everything passed to a DumpWriter for one HTTP exchange.
 type DumpEntry struct {
-	Meta DumpMeta
-
+	Meta        DumpMeta
 	ReqHeaders  http.Header
+	ReqBody     []byte
 	RespHeaders http.Header
-
-	ReqBody  []byte
-	RespBody []byte
+	RespBody    []byte
 }
