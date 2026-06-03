@@ -75,13 +75,25 @@ func (d *Dispatcher) Middlewares() []Middleware {
 	return d.middlewares
 }
 
+// Pre prepends middleware to the dispatcher's middleware chain.
+// Prepended middleware runs before Use-appended middleware.
+// This operation is safe for concurrent use.
+func (d *Dispatcher) Pre(middlewares ...Middleware) *Dispatcher {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	d.middlewares = append(middlewares, d.middlewares...)
+	return d
+}
+
 // Use appends middleware to the dispatcher's middleware chain.
 // This operation is safe for concurrent use.
-func (d *Dispatcher) Use(middlewares ...Middleware) {
+func (d *Dispatcher) Use(middlewares ...Middleware) *Dispatcher {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
 	d.middlewares = append(d.middlewares, middlewares...)
+	return d
 }
 
 // Clone creates a shallow copy of the Dispatcher.
